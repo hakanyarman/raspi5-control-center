@@ -1,4 +1,5 @@
 import noble from "@abandonware/noble";
+import { Pool } from "pg";
 
 const SCALE_MAC = "78:66:a5:21:29:04";
 
@@ -8,6 +9,26 @@ const STABLE_DIFFERENCE = 0.1;
 
 let lastSavedWeight: number | null = null;
 let lastSavedTime = 0;
+
+const pool = new Pool({
+  host: "127.0.0.1",
+  port: 5432,
+  user: "raspi",
+  password: "raspi_password",
+  database: "control_center",
+});
+
+async function saveWeight(weight: number) {
+  await pool.query(
+    `
+      INSERT INTO weight_measurements (weight_kg)
+      VALUES ($1)
+    `,
+    [weight],
+  );
+
+  console.log(`DB'ye kaydedildi: ${weight.toFixed(2)} kg`);
+}
 
 noble.on("stateChange", async (state) => {
   console.log("Bluetooth state:", state);
@@ -20,7 +41,7 @@ noble.on("stateChange", async (state) => {
   }
 });
 
-noble.on("discover", (peripheral) => {
+noble.on("discover", async (peripheral) => {
   const address = peripheral.address?.toLowerCase();
 
   if (address !== SCALE_MAC) return;
@@ -63,11 +84,17 @@ noble.on("discover", (peripheral) => {
 
     if (shouldSave) {
       console.log(
-        `\nÖLÇÜM TAMAMLANDI: ${stableWeight.toFixed(2)} kg`
+        `\nÖLÇÜM TAMAMLANDI: ${stableWeight.toFixed(2)} kg`,
       );
 
-      lastSavedWeight = stableWeight;
-      lastSavedTime = now;
+      try {
+        await saveWeight(stableWeight);
+
+        lastSavedWeight = stableWeight;
+        lastSavedTime = now;
+      } catch (error) {
+        console.error("\nDB kayıt hatası:", error);
+      }
     }
   }
 });
