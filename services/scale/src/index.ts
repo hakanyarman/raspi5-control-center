@@ -30,7 +30,7 @@ async function saveWeight(weight: number) {
   try {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock($1)", [895_431]);
-    const result = await client.query(
+    const result = await client.query<{ id: string }>(
       `
         INSERT INTO weight_measurements (weight_kg)
         SELECT $1
@@ -44,12 +44,17 @@ async function saveWeight(weight: number) {
       `,
       [weight],
     );
-    await client.query("COMMIT");
-
     if (result.rowCount === 0) {
+      await client.query("COMMIT");
       console.log(`Yakın duplicate atlandı: ${weight.toFixed(2)} kg`);
       return false;
     }
+
+    await client.query("SELECT pg_notify($1, $2)", [
+      "weight_measurement_saved",
+      result.rows[0]!.id,
+    ]);
+    await client.query("COMMIT");
 
     console.log(`DB'ye kaydedildi: ${weight.toFixed(2)} kg`);
     return true;

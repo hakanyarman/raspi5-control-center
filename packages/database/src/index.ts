@@ -1,6 +1,7 @@
-import { Pool, type PoolConfig } from "pg";
+import { Pool, type PoolClient, type PoolConfig } from "pg";
 
 export type DatabasePool = Pool;
+export type DatabaseClient = PoolClient;
 
 function requireEnvironmentVariable(name: string): string {
   const value = process.env[name];

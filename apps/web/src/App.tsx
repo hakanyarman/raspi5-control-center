@@ -111,6 +111,26 @@ function getWeightDifference(measurements: WeightMeasurement[]): number | null {
   return measurements[0].weightKg - measurements[1].weightKg
 }
 
+function compareMeasurementsNewestFirst(
+  left: WeightMeasurement,
+  right: WeightMeasurement,
+): number {
+  const timestampDifference = right.measuredAt.localeCompare(left.measuredAt)
+  if (timestampDifference !== 0) return timestampDifference
+  if (left.id.length !== right.id.length) return right.id.length - left.id.length
+  return right.id.localeCompare(left.id)
+}
+
+function mergeMeasurement(
+  measurements: WeightMeasurement[],
+  incoming: WeightMeasurement,
+  limit: number,
+): WeightMeasurement[] {
+  return [incoming, ...measurements.filter(({ id }) => id !== incoming.id)]
+    .sort(compareMeasurementsNewestFirst)
+    .slice(0, limit)
+}
+
 function Sidebar() {
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-white/6 bg-black/20 p-5 backdrop-blur-xl lg:flex lg:flex-col">
@@ -524,10 +544,33 @@ function App() {
         try {
           const message = JSON.parse(event.data) as {
             type?: string
-            data?: SystemMetrics
+            data?: SystemMetrics | WeightMeasurement
           }
-          if (message.type !== 'system.metrics' || !message.data) return
-          setData((current) => (current ? { ...current, system: message.data! } : current))
+          if (!message.data) return
+
+          if (message.type === 'system.metrics') {
+            const metrics = message.data as SystemMetrics
+            setData((current) => (current ? { ...current, system: metrics } : current))
+          }
+
+          if (message.type === 'weight.measurement') {
+            const measurement = message.data as WeightMeasurement
+            setData((current) => {
+              if (!current) return current
+              const measurements = mergeMeasurement(current.measurements, measurement, 7)
+              const chartMeasurements = mergeMeasurement(
+                current.chartMeasurements,
+                measurement,
+                30,
+              )
+              return {
+                ...current,
+                latest: measurements[0] ?? measurement,
+                measurements,
+                chartMeasurements,
+              }
+            })
+          }
         } catch {
           // Ignore malformed stream messages and keep the current snapshot.
         }

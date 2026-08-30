@@ -21,7 +21,7 @@ const app = createApp(pool);
 const server = app.listen(port, host, () => {
   console.log(`API listening on http://${host}:${port}`);
 });
-const stopMetricsStream = attachSystemMetricsWebSocket(server);
+const stopMetricsStream = attachSystemMetricsWebSocket(server, pool);
 
 let isShuttingDown = false;
 
