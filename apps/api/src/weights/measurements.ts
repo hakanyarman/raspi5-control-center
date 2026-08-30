@@ -1,4 +1,5 @@
 import type { DatabasePool } from "@raspi5-control-center/database";
+import type { WeightMeasurement } from "@raspi5-control-center/shared";
 
 interface WeightMeasurementRow {
   id: string;
@@ -6,11 +7,7 @@ interface WeightMeasurementRow {
   measured_at: Date;
 }
 
-export interface WeightMeasurement {
-  id: string;
-  weightKg: number;
-  measuredAt: string;
-}
+export type { WeightMeasurement } from "@raspi5-control-center/shared";
 
 function toWeightMeasurement(row: WeightMeasurementRow): WeightMeasurement {
   return {

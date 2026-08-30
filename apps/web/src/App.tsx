@@ -210,7 +210,13 @@ function LoadingDashboard() {
   )
 }
 
-function StatusCard({ data }: { data: DashboardData }) {
+function StatusCard({
+  data,
+  streamConnected,
+}: {
+  data: DashboardData
+  streamConnected: boolean
+}) {
   return (
     <Card className="border-white/8 bg-card/60 shadow-none backdrop-blur-xl">
       <CardHeader>
@@ -219,11 +225,22 @@ function StatusCard({ data }: { data: DashboardData }) {
             <Activity className="size-5" />
           </div>
           <Badge
-            className="border-emerald-400/20 bg-emerald-400/10 text-emerald-300"
+            className={cn(
+              streamConnected
+                ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300'
+                : 'border-amber-400/20 bg-amber-400/10 text-amber-300',
+            )}
             variant="outline"
           >
-            <span className="mr-1.5 size-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-            Çevrimiçi
+            <span
+              className={cn(
+                'mr-1.5 size-1.5 rounded-full',
+                streamConnected
+                  ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
+                  : 'bg-amber-400',
+              )}
+            />
+            {streamConnected ? 'Canlı' : 'Yeniden bağlanıyor'}
           </Badge>
         </div>
         <CardTitle className="mt-5">Altyapı durumu</CardTitle>
@@ -569,6 +586,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isDark, setIsDark] = useState(true)
+  const [streamConnected, setStreamConnected] = useState(false)
 
   const loadData = useCallback(async () => {
     setIsLoading(true)
@@ -608,6 +626,7 @@ function App() {
 
   useEffect(() => {
     let isCurrent = true
+    let hasConnectedOnce = false
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
     let socket: WebSocket | undefined
 
@@ -615,6 +634,22 @@ function App() {
       if (!isCurrent) return
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       socket = new WebSocket(`${protocol}//${window.location.host}/ws`)
+      socket.onopen = () => {
+        if (!isCurrent) return
+        setStreamConnected(true)
+        const isReconnect = hasConnectedOnce
+        hasConnectedOnce = true
+        if (!isReconnect) return
+        void getDashboardData()
+          .then((dashboardData) => {
+            if (!isCurrent) return
+            setData(dashboardData)
+            setError(null)
+          })
+          .catch(() => {
+            // The stream can recover independently; keep the last good snapshot.
+          })
+      }
       socket.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data) as {
@@ -656,8 +691,12 @@ function App() {
         }
       }
       socket.onclose = () => {
-        if (isCurrent) reconnectTimer = setTimeout(connect, 2_000)
+        if (isCurrent) {
+          setStreamConnected(false)
+          reconnectTimer = setTimeout(connect, 2_000)
+        }
       }
+      socket.onerror = () => setStreamConnected(false)
     }
 
     connect()
@@ -743,7 +782,7 @@ function App() {
 
           {isLoading && !data ? (
             <LoadingDashboard />
-          ) : error ? (
+          ) : error && !data ? (
             <Card className="border-red-400/15 bg-red-400/5 py-10 text-center">
               <CardContent>
                 <Activity className="mx-auto size-8 text-red-300" />
@@ -757,14 +796,26 @@ function App() {
               </CardContent>
             </Card>
           ) : data ? (
-            <div className="grid gap-4 lg:grid-cols-3">
-              <WeightCard data={data} />
-              <StatusCard data={data} />
-              <HistoryCard measurements={data.measurements} />
-              <WeightTrendCard measurements={data.chartMeasurements} />
-              <SystemCard metrics={data.system} />
-              <NetworkCard metrics={data.network} />
-              <UpcomingCard />
+            <div className="space-y-4">
+              {error && (
+                <div
+                  aria-live="polite"
+                  className="flex items-center gap-3 rounded-2xl border border-amber-400/15 bg-amber-400/5 px-4 py-3 text-sm text-amber-100"
+                  role="status"
+                >
+                  <Activity className="size-4 shrink-0 text-amber-300" />
+                  Son yenileme başarısız oldu; ekranda son alınan veriler gösteriliyor.
+                </div>
+              )}
+              <div className="grid gap-4 lg:grid-cols-3">
+                <WeightCard data={data} />
+                <StatusCard data={data} streamConnected={streamConnected} />
+                <HistoryCard measurements={data.measurements} />
+                <WeightTrendCard measurements={data.chartMeasurements} />
+                <SystemCard metrics={data.system} />
+                <NetworkCard metrics={data.network} />
+                <UpcomingCard />
+              </div>
             </div>
           ) : null}
         </main>

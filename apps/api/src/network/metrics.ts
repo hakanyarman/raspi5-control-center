@@ -1,17 +1,8 @@
+import type { NetworkMetrics } from "@raspi5-control-center/shared";
 import { promises as fs } from "node:fs";
 import { hostname, networkInterfaces } from "node:os";
 
-export interface NetworkMetrics {
-  hostname: string;
-  interfaceName: string | null;
-  ipv4Address: string | null;
-  connected: boolean;
-  receivedBytes: number | null;
-  transmittedBytes: number | null;
-  downloadBytesPerSecond: number | null;
-  uploadBytesPerSecond: number | null;
-  collectedAt: string;
-}
+export type { NetworkMetrics } from "@raspi5-control-center/shared";
 
 interface NetworkSample {
   interfaceName: string;
@@ -22,7 +13,73 @@ interface NetworkSample {
   uploadBytesPerSecond: number | null;
 }
 
-let previousSample: NetworkSample | null = null;
+export class NetworkRateTracker {
+  private previousSample: NetworkSample | null = null;
+
+  reset(): void {
+    this.previousSample = null;
+  }
+
+  sample(
+    interfaceName: string,
+    receivedBytes: number,
+    transmittedBytes: number,
+    sampledAtMs: number,
+  ): Pick<
+    NetworkMetrics,
+    "downloadBytesPerSecond" | "uploadBytesPerSecond"
+  > {
+    if (
+      !this.previousSample ||
+      this.previousSample.interfaceName !== interfaceName
+    ) {
+      this.previousSample = {
+        interfaceName,
+        receivedBytes,
+        transmittedBytes,
+        sampledAtMs,
+        downloadBytesPerSecond: null,
+        uploadBytesPerSecond: null,
+      };
+      return { downloadBytesPerSecond: null, uploadBytesPerSecond: null };
+    }
+
+    const elapsedSeconds =
+      (sampledAtMs - this.previousSample.sampledAtMs) / 1_000;
+    if (elapsedSeconds < 0.5) {
+      return {
+        downloadBytesPerSecond: this.previousSample.downloadBytesPerSecond,
+        uploadBytesPerSecond: this.previousSample.uploadBytesPerSecond,
+      };
+    }
+
+    const downloadBytesPerSecond = Math.max(
+      0,
+      Math.round(
+        (receivedBytes - this.previousSample.receivedBytes) / elapsedSeconds,
+      ),
+    );
+    const uploadBytesPerSecond = Math.max(
+      0,
+      Math.round(
+        (transmittedBytes - this.previousSample.transmittedBytes) /
+          elapsedSeconds,
+      ),
+    );
+    this.previousSample = {
+      interfaceName,
+      receivedBytes,
+      transmittedBytes,
+      sampledAtMs,
+      downloadBytesPerSecond,
+      uploadBytesPerSecond,
+    };
+
+    return { downloadBytesPerSecond, uploadBytesPerSecond };
+  }
+}
+
+const rateTracker = new NetworkRateTracker();
 
 async function readText(path: string): Promise<string | null> {
   try {
@@ -32,8 +89,7 @@ async function readText(path: string): Promise<string | null> {
   }
 }
 
-async function findDefaultRouteInterface(): Promise<string | null> {
-  const routeTable = await readText("/proc/net/route");
+export function parseDefaultRouteInterface(routeTable: string): string | null {
   if (!routeTable) return null;
 
   let selectedRoute: { interfaceName: string; metric: number } | null = null;
@@ -58,7 +114,12 @@ async function findDefaultRouteInterface(): Promise<string | null> {
   return selectedRoute?.interfaceName ?? null;
 }
 
-function isPhysicalCandidate(interfaceName: string): boolean {
+async function findDefaultRouteInterface(): Promise<string | null> {
+  const routeTable = await readText("/proc/net/route");
+  return routeTable ? parseDefaultRouteInterface(routeTable) : null;
+}
+
+export function isPhysicalCandidate(interfaceName: string): boolean {
   return !(
     interfaceName === "lo" ||
     interfaceName === "docker0" ||
@@ -103,63 +164,12 @@ async function readCounter(
   return Number.isSafeInteger(bytes) ? bytes : null;
 }
 
-function calculateRates(
-  interfaceName: string,
-  receivedBytes: number,
-  transmittedBytes: number,
-  sampledAtMs: number,
-): Pick<
-  NetworkMetrics,
-  "downloadBytesPerSecond" | "uploadBytesPerSecond"
-> {
-  if (!previousSample || previousSample.interfaceName !== interfaceName) {
-    previousSample = {
-      interfaceName,
-      receivedBytes,
-      transmittedBytes,
-      sampledAtMs,
-      downloadBytesPerSecond: null,
-      uploadBytesPerSecond: null,
-    };
-    return { downloadBytesPerSecond: null, uploadBytesPerSecond: null };
-  }
-
-  const elapsedSeconds = (sampledAtMs - previousSample.sampledAtMs) / 1_000;
-  if (elapsedSeconds < 0.5) {
-    return {
-      downloadBytesPerSecond: previousSample.downloadBytesPerSecond,
-      uploadBytesPerSecond: previousSample.uploadBytesPerSecond,
-    };
-  }
-
-  const downloadBytesPerSecond = Math.max(
-    0,
-    Math.round((receivedBytes - previousSample.receivedBytes) / elapsedSeconds),
-  );
-  const uploadBytesPerSecond = Math.max(
-    0,
-    Math.round(
-      (transmittedBytes - previousSample.transmittedBytes) / elapsedSeconds,
-    ),
-  );
-  previousSample = {
-    interfaceName,
-    receivedBytes,
-    transmittedBytes,
-    sampledAtMs,
-    downloadBytesPerSecond,
-    uploadBytesPerSecond,
-  };
-
-  return { downloadBytesPerSecond, uploadBytesPerSecond };
-}
-
 export async function collectNetworkMetrics(): Promise<NetworkMetrics> {
   const interfaceName = await findActiveInterface();
   const collectedAt = new Date().toISOString();
 
   if (!interfaceName) {
-    previousSample = null;
+    rateTracker.reset();
     return {
       hostname: hostname(),
       interfaceName: null,
@@ -182,7 +192,7 @@ export async function collectNetworkMetrics(): Promise<NetworkMetrics> {
   const rates =
     receivedBytes === null || transmittedBytes === null
       ? { downloadBytesPerSecond: null, uploadBytesPerSecond: null }
-      : calculateRates(
+      : rateTracker.sample(
           interfaceName,
           receivedBytes,
           transmittedBytes,

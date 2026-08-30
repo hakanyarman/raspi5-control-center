@@ -2,30 +2,11 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import { promisify } from "node:util";
+import type { SystemMetrics } from "@raspi5-control-center/shared";
 
 const execFileAsync = promisify(execFile);
 
-export interface SystemMetrics {
-  temperatureC: number | null;
-  fanRpm: number | null;
-  cpuUsagePercent: number;
-  loadAverage: number;
-  memory: {
-    usedMb: number;
-    totalMb: number;
-    availableMb: number;
-    usagePercent: number;
-  };
-  disk: {
-    usedGb: number;
-    totalGb: number;
-    usagePercent: number;
-  };
-  throttled: boolean | null;
-  throttleCode: string | null;
-  uptimeSeconds: number;
-  collectedAt: string;
-}
+export type { SystemMetrics } from "@raspi5-control-center/shared";
 
 interface CpuSnapshot {
   idle: number;

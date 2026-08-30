@@ -53,26 +53,47 @@ export function attachSystemMetricsWebSocket(
     }
   }
 
-  async function sendMetrics(socket: WebSocket): Promise<void> {
+  async function sendSystemMetrics(socket: WebSocket): Promise<void> {
     try {
-      const [systemMetrics, networkMetrics] = await Promise.all([
-        collectSystemMetrics(),
-        collectNetworkMetrics(),
-      ]);
-      const systemMessage: MetricsMessage = {
+      const message: MetricsMessage = {
         type: "system.metrics",
-        data: systemMetrics,
-      };
-      const networkMessage: NetworkMessage = {
-        type: "network.metrics",
-        data: networkMetrics,
+        data: await collectSystemMetrics(),
       };
       if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify(systemMessage));
-        socket.send(JSON.stringify(networkMessage));
+        socket.send(JSON.stringify(message));
       }
     } catch (error) {
       console.error("System metrics stream error:", error);
+    }
+  }
+
+  async function sendNetworkMetrics(socket: WebSocket): Promise<void> {
+    try {
+      const message: NetworkMessage = {
+        type: "network.metrics",
+        data: await collectNetworkMetrics(),
+      };
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(message));
+      }
+    } catch (error) {
+      console.error("Network metrics stream error:", error);
+    }
+  }
+
+  async function broadcastSystemMetrics(): Promise<void> {
+    try {
+      broadcast({ type: "system.metrics", data: await collectSystemMetrics() });
+    } catch (error) {
+      console.error("System metrics broadcast error:", error);
+    }
+  }
+
+  async function broadcastNetworkMetrics(): Promise<void> {
+    try {
+      broadcast({ type: "network.metrics", data: await collectNetworkMetrics() });
+    } catch (error) {
+      console.error("Network metrics broadcast error:", error);
     }
   }
 
@@ -80,22 +101,7 @@ export function attachSystemMetricsWebSocket(
     if (isCollecting || clients.size === 0) return;
     isCollecting = true;
     try {
-      const [systemMetrics, networkMetrics] = await Promise.all([
-        collectSystemMetrics(),
-        collectNetworkMetrics(),
-      ]);
-      const systemMessage: MetricsMessage = {
-        type: "system.metrics",
-        data: systemMetrics,
-      };
-      const networkMessage: NetworkMessage = {
-        type: "network.metrics",
-        data: networkMetrics,
-      };
-      broadcast(systemMessage);
-      broadcast(networkMessage);
-    } catch (error) {
-      console.error("System metrics broadcast error:", error);
+      await Promise.all([broadcastSystemMetrics(), broadcastNetworkMetrics()]);
     } finally {
       isCollecting = false;
     }
@@ -178,7 +184,8 @@ export function attachSystemMetricsWebSocket(
   webSocketServer.on("connection", (socket) => {
     clients.add(socket);
     socket.on("close", () => clients.delete(socket));
-    void sendMetrics(socket);
+    void sendSystemMetrics(socket);
+    void sendNetworkMetrics(socket);
     void sendLatestWeight(socket);
   });
 

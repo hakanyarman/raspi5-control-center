@@ -2,6 +2,8 @@ import noble from "@abandonware/noble";
 import { createDatabasePool } from "@raspi5-control-center/database";
 import dotenv from "dotenv";
 import { resolve } from "node:path";
+import { decodeWeightKg } from "./decoder";
+import { MeasurementSession } from "./measurement-session";
 
 dotenv.config({
   path: resolve(__dirname, "../../../.env"),
@@ -10,18 +12,8 @@ dotenv.config({
 
 const SCALE_MAC = "78:66:a5:21:29:04";
 
-const recentWeights: number[] = [];
-const WINDOW_SIZE = 10;
-const STABLE_DIFFERENCE = 0.1;
-const MIN_VALID_WEIGHT = 20;
-const MAX_VALID_WEIGHT = 250;
-const SESSION_RESET_AFTER_MS = 3_000;
-
-let lastSavedWeight: number | null = null;
-let lastSavedTime = 0;
 let isSaving = false;
-let measurementState: "idle" | "stabilizing" | "saved" = "idle";
-let lastAdvertisementTime = 0;
+const measurementSession = new MeasurementSession();
 
 const pool = createDatabasePool();
 
@@ -84,73 +76,25 @@ noble.on("discover", async (peripheral) => {
 
   const data = peripheral.advertisement.manufacturerData;
 
-  if (!data || data.length < 4) return;
-
-  const weightRaw = data.readUInt16BE(2);
-  const weight = weightRaw / 100;
+  if (!data) return;
+  const weight = decodeWeightKg(data);
+  if (weight === null) return;
   const now = Date.now();
-
-  if (
-    measurementState !== "idle" &&
-    now - lastAdvertisementTime > SESSION_RESET_AFTER_MS
-  ) {
-    recentWeights.length = 0;
-    measurementState = "idle";
-  }
-
-  if (weight < MIN_VALID_WEIGHT) {
-    return;
-  }
-
-  lastAdvertisementTime = now;
-  if (weight > MAX_VALID_WEIGHT || measurementState === "saved") return;
-
-  measurementState = "stabilizing";
-
-  recentWeights.push(weight);
-
-  if (recentWeights.length > WINDOW_SIZE) {
-    recentWeights.shift();
-  }
-
+  const observation = measurementSession.observe(weight, now);
+  if (!observation.accepted) return;
   process.stdout.write(`\rCanlı: ${weight.toFixed(2)} kg`);
+  if (observation.stableWeight === null || isSaving) return;
 
-  if (recentWeights.length < WINDOW_SIZE) return;
+  const stableWeight = observation.stableWeight;
+  isSaving = true;
+  console.log(`\nÖLÇÜM TAMAMLANDI: ${stableWeight.toFixed(2)} kg`);
 
-  const min = Math.min(...recentWeights);
-  const max = Math.max(...recentWeights);
-  const difference = max - min;
-
-  if (difference <= STABLE_DIFFERENCE) {
-    const average =
-      recentWeights.reduce((sum, value) => sum + value, 0) /
-      recentWeights.length;
-
-    const stableWeight = Number(average.toFixed(2));
-    const shouldSave =
-      lastSavedWeight === null ||
-      Math.abs(stableWeight - lastSavedWeight) >= 0.2 ||
-      now - lastSavedTime > 30_000;
-
-    if (shouldSave) {
-      if (isSaving) return;
-      isSaving = true;
-
-      console.log(
-        `\nÖLÇÜM TAMAMLANDI: ${stableWeight.toFixed(2)} kg`,
-      );
-
-      try {
-        await saveWeight(stableWeight);
-
-        lastSavedWeight = stableWeight;
-        lastSavedTime = now;
-        measurementState = "saved";
-      } catch (error) {
-        console.error("\nDB kayıt hatası:", error);
-      } finally {
-        isSaving = false;
-      }
-    }
+  try {
+    await saveWeight(stableWeight);
+    measurementSession.markSaved(stableWeight, now);
+  } catch (error) {
+    console.error("\nDB kayıt hatası:", error);
+  } finally {
+    isSaving = false;
   }
 });

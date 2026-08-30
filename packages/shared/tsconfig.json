@@ -5,16 +5,13 @@
     "moduleResolution": "Node",
     "rootDir": "./src",
     "outDir": "./dist",
-    "types": ["node"],
-    "esModuleInterop": true,
-    "strict": true,
-    "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
+    "strict": true,
+    "sourceMap": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts"]
+  "include": ["src/**/*.ts"]
 }
