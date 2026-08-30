@@ -1,16 +1,10 @@
+import type { LanNeighborObservation, LanNeighborState } from "@raspi5-control-center/shared";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-export type LanNeighborState = "reachable" | "stale" | "unknown";
-
-export interface LanNeighborObservation {
-  ipAddress: string;
-  macAddress: string;
-  interfaceName: string;
-  state: LanNeighborState;
-}
+export type { LanNeighborObservation, LanNeighborState } from "@raspi5-control-center/shared";
 
 const ipv6Pattern = /^[0-9a-f:]+$/i;
 const macPattern = /^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/i;

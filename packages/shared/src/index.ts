@@ -37,3 +37,12 @@ export interface NetworkMetrics {
   uploadBytesPerSecond: number | null;
   collectedAt: string;
 }
+
+export type LanNeighborState = "reachable" | "stale" | "unknown";
+
+export interface LanNeighborObservation {
+  ipAddress: string;
+  macAddress: string;
+  interfaceName: string;
+  state: LanNeighborState;
+}

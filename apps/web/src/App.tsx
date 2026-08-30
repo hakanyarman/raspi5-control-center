@@ -44,6 +44,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   getDashboardData,
   type DashboardData,
+  type LanNeighborObservation,
   type NetworkMetrics,
   type SystemMetrics,
   type WeightMeasurement,
@@ -521,7 +522,7 @@ function SystemCard({ metrics }: { metrics: SystemMetrics }) {
   )
 }
 
-function NetworkCard({ metrics }: { metrics: NetworkMetrics }) {
+function NetworkCard({ metrics, neighbors }: { metrics: NetworkMetrics; neighbors: LanNeighborObservation[] }) {
   return (
     <Card className="border-white/8 bg-card/60 shadow-none backdrop-blur-xl">
       <CardHeader>
@@ -572,6 +573,27 @@ function NetworkCard({ metrics }: { metrics: NetworkMetrics }) {
         <div className="flex items-center justify-between border-t border-white/8 pt-3 text-xs text-muted-foreground">
           <span>Toplam ↓ {formatBytes(metrics.receivedBytes)}</span>
           <span>↑ {formatBytes(metrics.transmittedBytes)}</span>
+        </div>
+        <div className="border-t border-white/8 pt-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Yerel cihazlar</span>
+            <span className="font-medium tabular-nums">{neighbors.length}</span>
+          </div>
+          {neighbors.length > 0 ? (
+            <div className="mt-2 space-y-1.5">
+              {neighbors.slice(0, 4).map((neighbor) => (
+                <div className="flex items-center justify-between gap-3 text-xs" key={`${neighbor.ipAddress}-${neighbor.macAddress}`}>
+                  <span className="truncate font-mono">{neighbor.ipAddress}</span>
+                  <span className={cn('shrink-0', neighbor.state === 'reachable' ? 'text-emerald-300' : 'text-muted-foreground')}>
+                    {neighbor.state === 'reachable' ? 'Ulaşılabilir' : neighbor.state === 'stale' ? 'Eski kayıt' : 'Bilinmiyor'}
+                  </span>
+                </div>
+              ))}
+              {neighbors.length > 4 && <p className="pt-1 text-[11px] text-muted-foreground">+{neighbors.length - 4} cihaz daha</p>}
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">Komşu tablosunda cihaz gözlenmedi.</p>
+          )}
         </div>
         <p className="text-[11px] text-muted-foreground">
           Güncellendi: {formatMeasurementDate(metrics.collectedAt)}
@@ -813,7 +835,7 @@ function App() {
                 <HistoryCard measurements={data.measurements} />
                 <WeightTrendCard measurements={data.chartMeasurements} />
                 <SystemCard metrics={data.system} />
-                <NetworkCard metrics={data.network} />
+                <NetworkCard metrics={data.network} neighbors={data.neighbors} />
                 <UpcomingCard />
               </div>
             </div>

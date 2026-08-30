@@ -1,11 +1,13 @@
 import type {
   NetworkMetrics,
+  LanNeighborObservation,
   SystemMetrics,
   WeightMeasurement,
 } from '@raspi5-control-center/shared'
 
 export type {
   NetworkMetrics,
+  LanNeighborObservation,
   SystemMetrics,
   WeightMeasurement,
 } from '@raspi5-control-center/shared'
@@ -22,6 +24,7 @@ export interface DashboardData {
   chartMeasurements: WeightMeasurement[]
   system: SystemMetrics
   network: NetworkMetrics
+  neighbors: LanNeighborObservation[]
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -46,14 +49,15 @@ async function getLatestWeight(): Promise<WeightMeasurement | null> {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [health, latest, measurements, chartMeasurements, system, network] = await Promise.all([
+  const [health, latest, measurements, chartMeasurements, system, network, neighbors] = await Promise.all([
     fetchJson<HealthStatus>('/health'),
     getLatestWeight(),
     fetchJson<WeightMeasurement[]>('/api/weights?limit=7'),
     fetchJson<WeightMeasurement[]>('/api/weights?limit=30'),
     fetchJson<SystemMetrics>('/api/system/metrics'),
     fetchJson<NetworkMetrics>('/api/network/metrics'),
+    fetchJson<{ devices: LanNeighborObservation[] }>('/api/network/neighbors'),
   ])
 
-  return { health, latest, measurements, chartMeasurements, system, network }
+  return { health, latest, measurements, chartMeasurements, system, network, neighbors: neighbors.devices }
 }
