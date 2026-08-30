@@ -3,6 +3,7 @@ import express, {
   type ErrorRequestHandler,
   type RequestHandler,
 } from "express";
+import { createWeightsRouter } from "./routes/weights";
 
 export function createApp(pool: DatabasePool) {
   const app = express();
@@ -26,6 +27,8 @@ export function createApp(pool: DatabasePool) {
       });
     }
   });
+
+  app.use("/api/weights", createWeightsRouter(pool));
 
   const notFoundHandler: RequestHandler = (_request, response) => {
     response.status(404).json({ error: "Not found" });
