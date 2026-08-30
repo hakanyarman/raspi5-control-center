@@ -5,6 +5,10 @@ import type {
 import type { Server } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import {
+  collectNetworkMetrics,
+  type NetworkMetrics,
+} from "../network/metrics";
+import {
   getLatestWeightMeasurement,
   getWeightMeasurementById,
   type WeightMeasurement,
@@ -23,6 +27,11 @@ interface WeightMessage {
   data: WeightMeasurement;
 }
 
+interface NetworkMessage {
+  type: "network.metrics";
+  data: NetworkMetrics;
+}
+
 export function attachSystemMetricsWebSocket(
   server: Server,
   pool: DatabasePool,
@@ -35,7 +44,9 @@ export function attachSystemMetricsWebSocket(
   let reconnectTimer: NodeJS.Timeout | undefined;
   let listenerClient: DatabaseClient | undefined;
 
-  function broadcast(message: MetricsMessage | WeightMessage): void {
+  function broadcast(
+    message: MetricsMessage | WeightMessage | NetworkMessage,
+  ): void {
     const payload = JSON.stringify(message);
     for (const client of clients) {
       if (client.readyState === WebSocket.OPEN) client.send(payload);
@@ -44,11 +55,22 @@ export function attachSystemMetricsWebSocket(
 
   async function sendMetrics(socket: WebSocket): Promise<void> {
     try {
-      const message: MetricsMessage = {
+      const [systemMetrics, networkMetrics] = await Promise.all([
+        collectSystemMetrics(),
+        collectNetworkMetrics(),
+      ]);
+      const systemMessage: MetricsMessage = {
         type: "system.metrics",
-        data: await collectSystemMetrics(),
+        data: systemMetrics,
       };
-      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+      const networkMessage: NetworkMessage = {
+        type: "network.metrics",
+        data: networkMetrics,
+      };
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(systemMessage));
+        socket.send(JSON.stringify(networkMessage));
+      }
     } catch (error) {
       console.error("System metrics stream error:", error);
     }
@@ -58,11 +80,20 @@ export function attachSystemMetricsWebSocket(
     if (isCollecting || clients.size === 0) return;
     isCollecting = true;
     try {
-      const message: MetricsMessage = {
+      const [systemMetrics, networkMetrics] = await Promise.all([
+        collectSystemMetrics(),
+        collectNetworkMetrics(),
+      ]);
+      const systemMessage: MetricsMessage = {
         type: "system.metrics",
-        data: await collectSystemMetrics(),
+        data: systemMetrics,
       };
-      broadcast(message);
+      const networkMessage: NetworkMessage = {
+        type: "network.metrics",
+        data: networkMetrics,
+      };
+      broadcast(systemMessage);
+      broadcast(networkMessage);
     } catch (error) {
       console.error("System metrics broadcast error:", error);
     } finally {

@@ -1,5 +1,7 @@
 import {
   Activity,
+  ArrowDown,
+  ArrowUp,
   Boxes,
   CircuitBoard,
   Cpu,
@@ -42,25 +44,21 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   getDashboardData,
   type DashboardData,
+  type NetworkMetrics,
   type SystemMetrics,
   type WeightMeasurement,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 const navigation = [
-  { label: 'Genel Bakış', icon: LayoutDashboard, active: true },
-  { label: 'Sistem', icon: Gauge },
-  { label: 'Ağ', icon: Network },
-  { label: 'Depolama', icon: HardDrive },
-  { label: 'Servisler', icon: Boxes },
+  { label: 'Genel Bakış', icon: LayoutDashboard, active: true, available: true },
+  { label: 'Sistem', icon: Gauge, available: true },
+  { label: 'Ağ', icon: Network, available: true },
+  { label: 'Depolama', icon: HardDrive, available: false },
+  { label: 'Servisler', icon: Boxes, available: false },
 ]
 
 const upcomingModules = [
-  {
-    title: 'Ağ',
-    description: 'LAN cihazları ve bağlantı görünürlüğü',
-    icon: Wifi,
-  },
   {
     title: 'Depolama',
     description: 'NVMe ve harici disk kapasitesi',
@@ -80,6 +78,23 @@ function formatWeight(value: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value)
+}
+
+function formatBytes(value: number | null): string {
+  if (value === null) return 'N/A'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let amount = value
+  let unitIndex = 0
+  while (amount >= 1024 && unitIndex < units.length - 1) {
+    amount /= 1024
+    unitIndex += 1
+  }
+  const digits = amount >= 100 || unitIndex === 0 ? 0 : amount >= 10 ? 1 : 2
+  return `${amount.toFixed(digits)} ${units[unitIndex]}`
+}
+
+function formatTransferRate(value: number | null): string {
+  return value === null ? 'Hesaplanıyor' : `${formatBytes(value)}/s`
 }
 
 function formatUptime(seconds: number): string {
@@ -145,7 +160,7 @@ function Sidebar() {
       </div>
 
       <nav className="mt-8 space-y-1.5">
-        {navigation.map(({ label, icon: Icon, active }) => (
+        {navigation.map(({ label, icon: Icon, active, available }) => (
           <button
             className={cn(
               'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',
@@ -158,7 +173,7 @@ function Sidebar() {
           >
             <Icon className={cn('size-4', active && 'text-emerald-400')} />
             <span>{label}</span>
-            {!active && (
+            {!active && !available && (
               <span className="ml-auto text-[10px] uppercase tracking-widest text-muted-foreground/60">
                 Yakında
               </span>
@@ -489,6 +504,66 @@ function SystemCard({ metrics }: { metrics: SystemMetrics }) {
   )
 }
 
+function NetworkCard({ metrics }: { metrics: NetworkMetrics }) {
+  return (
+    <Card className="border-white/8 bg-card/60 shadow-none backdrop-blur-xl">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-sky-400/10 text-sky-300">
+            <Wifi className="size-5" />
+          </div>
+          <Badge
+            className={cn(
+              'border-white/10',
+              metrics.connected ? 'text-emerald-300' : 'text-red-300',
+            )}
+            variant="outline"
+          >
+            {metrics.connected ? 'Bağlı' : 'Bağlantı yok'}
+          </Badge>
+        </div>
+        <CardTitle className="mt-5">Ağ</CardTitle>
+        <CardDescription>{metrics.hostname}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Arayüz</span>
+          <span className="font-medium">{metrics.interfaceName ?? 'N/A'}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Yerel IPv4</span>
+          <span className="font-mono text-xs">{metrics.ipv4Address ?? 'N/A'}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-white/[0.035] p-3">
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <ArrowDown className="size-3.5 text-sky-300" /> İndirme
+            </span>
+            <p className="mt-2 text-sm font-semibold tabular-nums">
+              {formatTransferRate(metrics.downloadBytesPerSecond)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-white/[0.035] p-3">
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <ArrowUp className="size-3.5 text-violet-300" /> Yükleme
+            </span>
+            <p className="mt-2 text-sm font-semibold tabular-nums">
+              {formatTransferRate(metrics.uploadBytesPerSecond)}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between border-t border-white/8 pt-3 text-xs text-muted-foreground">
+          <span>Toplam ↓ {formatBytes(metrics.receivedBytes)}</span>
+          <span>↑ {formatBytes(metrics.transmittedBytes)}</span>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Güncellendi: {formatMeasurementDate(metrics.collectedAt)}
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
 function App() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -544,13 +619,18 @@ function App() {
         try {
           const message = JSON.parse(event.data) as {
             type?: string
-            data?: SystemMetrics | WeightMeasurement
+            data?: SystemMetrics | NetworkMetrics | WeightMeasurement
           }
           if (!message.data) return
 
           if (message.type === 'system.metrics') {
             const metrics = message.data as SystemMetrics
             setData((current) => (current ? { ...current, system: metrics } : current))
+          }
+
+          if (message.type === 'network.metrics') {
+            const network = message.data as NetworkMetrics
+            setData((current) => (current ? { ...current, network } : current))
           }
 
           if (message.type === 'weight.measurement') {
@@ -683,6 +763,7 @@ function App() {
               <HistoryCard measurements={data.measurements} />
               <WeightTrendCard measurements={data.chartMeasurements} />
               <SystemCard metrics={data.system} />
+              <NetworkCard metrics={data.network} />
               <UpcomingCard />
             </div>
           ) : null}

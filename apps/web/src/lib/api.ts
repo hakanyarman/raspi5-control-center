@@ -31,12 +31,25 @@ export interface SystemMetrics {
   collectedAt: string
 }
 
+export interface NetworkMetrics {
+  hostname: string
+  interfaceName: string | null
+  ipv4Address: string | null
+  connected: boolean
+  receivedBytes: number | null
+  transmittedBytes: number | null
+  downloadBytesPerSecond: number | null
+  uploadBytesPerSecond: number | null
+  collectedAt: string
+}
+
 export interface DashboardData {
   health: HealthStatus
   latest: WeightMeasurement | null
   measurements: WeightMeasurement[]
   chartMeasurements: WeightMeasurement[]
   system: SystemMetrics
+  network: NetworkMetrics
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -61,13 +74,14 @@ async function getLatestWeight(): Promise<WeightMeasurement | null> {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [health, latest, measurements, chartMeasurements, system] = await Promise.all([
+  const [health, latest, measurements, chartMeasurements, system, network] = await Promise.all([
     fetchJson<HealthStatus>('/health'),
     getLatestWeight(),
     fetchJson<WeightMeasurement[]>('/api/weights?limit=7'),
     fetchJson<WeightMeasurement[]>('/api/weights?limit=30'),
     fetchJson<SystemMetrics>('/api/system/metrics'),
+    fetchJson<NetworkMetrics>('/api/network/metrics'),
   ])
 
-  return { health, latest, measurements, chartMeasurements, system }
+  return { health, latest, measurements, chartMeasurements, system, network }
 }
