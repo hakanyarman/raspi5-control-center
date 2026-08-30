@@ -2,6 +2,7 @@ import {
   Activity,
   Boxes,
   CircuitBoard,
+  Cpu,
   Database,
   Gauge,
   HardDrive,
@@ -12,6 +13,8 @@ import {
   Scale,
   Server,
   Sun,
+  Thermometer,
+  Wind,
   Wifi,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -30,6 +33,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   getDashboardData,
   type DashboardData,
+  type SystemMetrics,
   type WeightMeasurement,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -43,11 +47,6 @@ const navigation = [
 ]
 
 const upcomingModules = [
-  {
-    title: 'Sistem',
-    description: 'CPU sıcaklığı, RAM ve fan durumu',
-    icon: Gauge,
-  },
   {
     title: 'Ağ',
     description: 'LAN cihazları ve bağlantı görünürlüğü',
@@ -72,6 +71,30 @@ function formatWeight(value: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value)
+}
+
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86_400)
+  const hours = Math.floor((seconds % 86_400) / 3_600)
+  const minutes = Math.floor((seconds % 3_600) / 60)
+  if (days > 0) return `${days} gün ${hours} saat`
+  if (hours > 0) return `${hours} saat ${minutes} dk`
+  return `${minutes} dk`
+}
+
+function getTemperatureStatus(temperatureC: number | null) {
+  if (temperatureC === null) return { label: 'Okunamadı', className: 'text-muted-foreground' }
+  if (temperatureC >= 80) return { label: 'Kritik', className: 'text-red-300' }
+  if (temperatureC >= 65) return { label: 'Isınıyor', className: 'text-amber-300' }
+  return { label: 'Normal', className: 'text-emerald-300' }
+}
+
+function MetricBar({ value, className }: { value: number; className: string }) {
+  return (
+    <div className="h-1.5 overflow-hidden rounded-full bg-white/8">
+      <div className={cn('h-full rounded-full transition-all', className)} style={{ width: `${Math.min(Math.max(value, 0), 100)}%` }} />
+    </div>
+  )
 }
 
 function getWeightDifference(measurements: WeightMeasurement[]): number | null {
@@ -316,6 +339,59 @@ function UpcomingCard() {
   )
 }
 
+function SystemCard({ metrics }: { metrics: SystemMetrics }) {
+  const temperatureStatus = getTemperatureStatus(metrics.temperatureC)
+  return (
+    <Card className="border-white/8 bg-card/60 shadow-none backdrop-blur-xl">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300">
+            <Cpu className="size-5" />
+          </div>
+          <Badge variant="outline" className={cn('border-white/10', temperatureStatus.className)}>
+            {temperatureStatus.label}
+          </Badge>
+        </div>
+        <CardTitle className="mt-5">Sistem</CardTitle>
+        <CardDescription>Raspberry Pi anlık durumu</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between text-sm">
+          <span className="flex items-center gap-2 text-muted-foreground"><Thermometer className="size-4" /> Sıcaklık</span>
+          <span className="font-medium tabular-nums">{metrics.temperatureC === null ? 'N/A' : `${metrics.temperatureC.toFixed(1)}°C`}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="flex items-center gap-2 text-muted-foreground"><Wind className="size-4" /> Fan</span>
+          <span className="font-medium tabular-nums">{metrics.fanRpm === null ? 'N/A' : `${metrics.fanRpm} RPM`}</span>
+        </div>
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">CPU kullanımı</span><span className="tabular-nums">{metrics.cpuUsagePercent}%</span></div>
+          <MetricBar value={metrics.cpuUsagePercent} className="bg-sky-400" />
+        </div>
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">RAM</span><span className="tabular-nums">{metrics.memory.usedMb} / {metrics.memory.totalMb} MB</span></div>
+          <MetricBar value={metrics.memory.usagePercent} className="bg-violet-400" />
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Disk</span>
+          <span className="tabular-nums">{metrics.disk.usedGb} / {metrics.disk.totalGb} GB ({metrics.disk.usagePercent}%)</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Uptime</span>
+          <span>{formatUptime(metrics.uptimeSeconds)}</span>
+        </div>
+        <div className="flex items-center justify-between border-t border-white/8 pt-3 text-xs">
+          <span className="text-muted-foreground">Power</span>
+          <span className={cn(metrics.throttled === true ? 'text-red-300' : 'text-emerald-300')}>
+            {metrics.throttleCode ?? 'N/A'}{metrics.throttled === true ? ' · Throttle' : ' · Normal'}
+          </span>
+        </div>
+        <p className="text-[11px] text-muted-foreground">Güncellendi: {formatMeasurementDate(metrics.collectedAt)}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
 function App() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -451,6 +527,7 @@ function App() {
               <WeightCard data={data} />
               <StatusCard data={data} />
               <HistoryCard measurements={data.measurements} />
+              <SystemCard metrics={data.system} />
               <UpcomingCard />
             </div>
           ) : null}

@@ -9,10 +9,33 @@ export interface WeightMeasurement {
   measuredAt: string
 }
 
+export interface SystemMetrics {
+  temperatureC: number | null
+  fanRpm: number | null
+  cpuUsagePercent: number
+  loadAverage: number
+  memory: {
+    usedMb: number
+    totalMb: number
+    availableMb: number
+    usagePercent: number
+  }
+  disk: {
+    usedGb: number
+    totalGb: number
+    usagePercent: number
+  }
+  throttled: boolean | null
+  throttleCode: string | null
+  uptimeSeconds: number
+  collectedAt: string
+}
+
 export interface DashboardData {
   health: HealthStatus
   latest: WeightMeasurement | null
   measurements: WeightMeasurement[]
+  system: SystemMetrics
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -37,11 +60,12 @@ async function getLatestWeight(): Promise<WeightMeasurement | null> {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [health, latest, measurements] = await Promise.all([
+  const [health, latest, measurements, system] = await Promise.all([
     fetchJson<HealthStatus>('/health'),
     getLatestWeight(),
     fetchJson<WeightMeasurement[]>('/api/weights?limit=7'),
+    fetchJson<SystemMetrics>('/api/system/metrics'),
   ])
 
-  return { health, latest, measurements }
+  return { health, latest, measurements, system }
 }
