@@ -1,0 +1,14 @@
+{
+  "name": "raspi5-control-center",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev:scale": "npm run dev --workspace=scale"
+  }
+}
