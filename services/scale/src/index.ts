@@ -1,22 +1,12 @@
 import noble from "@abandonware/noble";
+import { createDatabasePool } from "@raspi5-control-center/database";
 import dotenv from "dotenv";
 import { resolve } from "node:path";
-import { Pool } from "pg";
 
 dotenv.config({
   path: resolve(__dirname, "../../../.env"),
   quiet: true,
 });
-
-function requireEnvironmentVariable(name: string): string {
-  const value = process.env[name];
-
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-
-  return value;
-}
 
 const SCALE_MAC = "78:66:a5:21:29:04";
 
@@ -27,13 +17,7 @@ const STABLE_DIFFERENCE = 0.1;
 let lastSavedWeight: number | null = null;
 let lastSavedTime = 0;
 
-const pool = new Pool({
-  host: requireEnvironmentVariable("POSTGRES_HOST"),
-  port: Number(requireEnvironmentVariable("POSTGRES_PORT")),
-  user: requireEnvironmentVariable("POSTGRES_USER"),
-  password: requireEnvironmentVariable("POSTGRES_PASSWORD"),
-  database: requireEnvironmentVariable("POSTGRES_DB"),
-});
+const pool = createDatabasePool();
 
 async function saveWeight(weight: number) {
   await pool.query(

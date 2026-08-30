@@ -8,7 +8,14 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "dev:scale": "npm run dev --workspace=scale"
+    "build": "npm run build --workspace=@raspi5-control-center/database && npm run build --workspace=scale",
+    "dev:scale": "npm run build --workspace=@raspi5-control-center/database && npm run dev --workspace=scale",
+    "migrate": "npm run migrate --workspace=@raspi5-control-center/database"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "usb@2.18.0": true,
+    "@abandonware/noble@1.9.2-26": true,
+    "@abandonware/bluetooth-hci-socket@0.5.3-12": true
   }
 }
