@@ -8,7 +8,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace=@raspi5-control-center/database && npm run build --workspace=scale",
+    "build": "npm run build --workspace=@raspi5-control-center/database && npm run build --workspace=@raspi5-control-center/api && npm run build --workspace=scale",
+    "dev:api": "npm run build --workspace=@raspi5-control-center/database && npm run dev --workspace=@raspi5-control-center/api",
     "dev:scale": "npm run build --workspace=@raspi5-control-center/database && npm run dev --workspace=scale",
     "migrate": "npm run migrate --workspace=@raspi5-control-center/database"
   },
