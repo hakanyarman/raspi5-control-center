@@ -46,6 +46,7 @@ import {
   type DashboardData,
   type LanNeighborObservation,
   type NetworkMetrics,
+  type StorageMetrics,
   type SystemMetrics,
   type WeightMeasurement,
 } from '@/lib/api'
@@ -55,15 +56,15 @@ const navigation = [
   { label: 'Genel Bakış', icon: LayoutDashboard, active: true, available: true },
   { label: 'Sistem', icon: Gauge, available: true },
   { label: 'Ağ', icon: Network, available: true },
-  { label: 'Depolama', icon: HardDrive, available: false },
+  { label: 'Depolama', icon: HardDrive, available: true },
   { label: 'Servisler', icon: Boxes, available: false },
 ]
 
 const upcomingModules = [
   {
-    title: 'Depolama',
-    description: 'NVMe ve harici disk kapasitesi',
-    icon: HardDrive,
+    title: 'Servisler',
+    description: 'Docker ve systemd servislerinin read-only durumu',
+    icon: Boxes,
   },
 ]
 
@@ -503,10 +504,6 @@ function SystemCard({ metrics }: { metrics: SystemMetrics }) {
           <MetricBar value={metrics.memory.usagePercent} className="bg-violet-400" />
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Disk</span>
-          <span className="tabular-nums">{metrics.disk.usedGb} / {metrics.disk.totalGb} GB ({metrics.disk.usagePercent}%)</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Uptime</span>
           <span>{formatUptime(metrics.uptimeSeconds)}</span>
         </div>
@@ -598,6 +595,58 @@ function NetworkCard({ metrics, neighbors }: { metrics: NetworkMetrics; neighbor
         <p className="text-[11px] text-muted-foreground">
           Güncellendi: {formatMeasurementDate(metrics.collectedAt)}
         </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function StorageCard({ metrics }: { metrics: StorageMetrics }) {
+  const storageStatus = metrics.usagePercent >= 90
+    ? { label: 'Kritik', className: 'text-red-300' }
+    : metrics.usagePercent >= 75
+      ? { label: 'Doluyor', className: 'text-amber-300' }
+      : { label: 'Sağlıklı', className: 'text-emerald-300' }
+
+  return (
+    <Card className="border-white/8 bg-card/60 shadow-none backdrop-blur-xl">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-amber-400/10 text-amber-300">
+            <HardDrive className="size-5" />
+          </div>
+          <Badge className={cn('border-white/10', storageStatus.className)} variant="outline">
+            {storageStatus.label}
+          </Badge>
+        </div>
+        <CardTitle className="mt-5">Depolama</CardTitle>
+        <CardDescription className="truncate" title={metrics.model ?? metrics.drivePath}>
+          {metrics.model ?? metrics.drivePath}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <div className="flex items-end justify-between gap-3">
+            <span className="text-3xl font-semibold tabular-nums">%{metrics.usagePercent}</span>
+            <span className="pb-1 text-xs text-muted-foreground">{formatBytes(metrics.usedBytes)} kullanılıyor</span>
+          </div>
+          <MetricBar value={metrics.usagePercent} className="bg-amber-400" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-white/[0.035] p-3">
+            <p className="text-xs text-muted-foreground">Toplam</p>
+            <p className="mt-1 font-semibold tabular-nums">{formatBytes(metrics.totalBytes)}</p>
+          </div>
+          <div className="rounded-xl bg-white/[0.035] p-3">
+            <p className="text-xs text-muted-foreground">Kullanılabilir</p>
+            <p className="mt-1 font-semibold tabular-nums">{formatBytes(metrics.availableBytes)}</p>
+          </div>
+        </div>
+        <div className="space-y-2 border-t border-white/8 pt-3 text-xs">
+          <div className="flex justify-between gap-3"><span className="text-muted-foreground">Cihaz</span><span className="font-mono">{metrics.devicePath}</span></div>
+          <div className="flex justify-between gap-3"><span className="text-muted-foreground">Filesystem</span><span>{metrics.filesystem} · {metrics.mountPoint}</span></div>
+          <div className="flex justify-between gap-3"><span className="text-muted-foreground">Bağlantı</span><span className="uppercase">{metrics.transport ?? 'N/A'}</span></div>
+        </div>
+        <p className="text-[11px] text-muted-foreground">Güncellendi: {formatMeasurementDate(metrics.collectedAt)}</p>
       </CardContent>
     </Card>
   )
@@ -836,7 +885,8 @@ function App() {
                 <WeightTrendCard measurements={data.chartMeasurements} />
                 <SystemCard metrics={data.system} />
                 <NetworkCard metrics={data.network} neighbors={data.neighbors} />
-                <UpcomingCard />
+                <StorageCard metrics={data.storage} />
+                {upcomingModules.length > 0 && <UpcomingCard />}
               </div>
             </div>
           ) : null}

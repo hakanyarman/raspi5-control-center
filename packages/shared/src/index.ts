@@ -46,3 +46,17 @@ export interface LanNeighborObservation {
   interfaceName: string;
   state: LanNeighborState;
 }
+
+export interface StorageMetrics {
+  devicePath: string;
+  drivePath: string;
+  model: string | null;
+  transport: string | null;
+  filesystem: string;
+  mountPoint: string;
+  totalBytes: number;
+  usedBytes: number;
+  availableBytes: number;
+  usagePercent: number;
+  collectedAt: string;
+}
