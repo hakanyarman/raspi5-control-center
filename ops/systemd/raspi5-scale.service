@@ -1,0 +1,16 @@
+[Unit]
+Description=Raspberry Pi control center BLE scale listener
+After=network-online.target bluetooth.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hakanyarman
+WorkingDirectory=/home/hakanyarman/projects/raspi5-control-center
+EnvironmentFile=-/home/hakanyarman/projects/raspi5-control-center/.env
+ExecStart=/home/hakanyarman/.nvm/versions/node/v24.20.0/bin/node /home/hakanyarman/projects/raspi5-control-center/services/scale/dist/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
