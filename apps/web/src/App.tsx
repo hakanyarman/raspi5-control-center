@@ -511,6 +511,40 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    let isCurrent = true
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+    let socket: WebSocket | undefined
+
+    function connect() {
+      if (!isCurrent) return
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      socket = new WebSocket(`${protocol}//${window.location.host}/ws`)
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data) as {
+            type?: string
+            data?: SystemMetrics
+          }
+          if (message.type !== 'system.metrics' || !message.data) return
+          setData((current) => (current ? { ...current, system: message.data! } : current))
+        } catch {
+          // Ignore malformed stream messages and keep the current snapshot.
+        }
+      }
+      socket.onclose = () => {
+        if (isCurrent) reconnectTimer = setTimeout(connect, 2_000)
+      }
+    }
+
+    connect()
+    return () => {
+      isCurrent = false
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      socket?.close()
+    }
+  }, [])
+
   const today = useMemo(
     () =>
       new Intl.DateTimeFormat('tr-TR', {

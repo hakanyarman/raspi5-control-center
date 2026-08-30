@@ -2,6 +2,7 @@ import { createDatabasePool } from "@raspi5-control-center/database";
 import dotenv from "dotenv";
 import { resolve } from "node:path";
 import { createApp } from "./app";
+import { attachSystemMetricsWebSocket } from "./system/metrics-stream";
 
 dotenv.config({
   path: resolve(__dirname, "../../../.env"),
@@ -20,6 +21,7 @@ const app = createApp(pool);
 const server = app.listen(port, host, () => {
   console.log(`API listening on http://${host}:${port}`);
 });
+const stopMetricsStream = attachSystemMetricsWebSocket(server);
 
 let isShuttingDown = false;
 
@@ -27,6 +29,7 @@ function shutDown(signal: NodeJS.Signals): void {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log(`Received ${signal}, shutting down API`);
+  stopMetricsStream();
 
   server.close(async (error) => {
     await pool.end();
