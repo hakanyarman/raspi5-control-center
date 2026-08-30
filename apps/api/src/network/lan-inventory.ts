@@ -1,3 +1,8 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
 export type LanNeighborState = "reachable" | "stale" | "unknown";
 
 export interface LanNeighborObservation {
@@ -51,4 +56,19 @@ export function parseNeighborTable(output: string): LanNeighborObservation[] {
     });
   }
   return observations;
+}
+
+export async function collectLanNeighbors(): Promise<LanNeighborObservation[]> {
+  const { stdout } = await execFileAsync("ip", ["neigh", "show"], {
+    timeout: 1_000,
+    maxBuffer: 64 * 1024,
+  });
+  return parseNeighborTable(stdout).filter(({ interfaceName }) =>
+    !(
+      interfaceName === "lo" ||
+      interfaceName === "docker0" ||
+      interfaceName.startsWith("br-") ||
+      interfaceName.startsWith("veth")
+    ),
+  );
 }
