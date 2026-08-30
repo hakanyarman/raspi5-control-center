@@ -35,6 +35,7 @@ export interface DashboardData {
   health: HealthStatus
   latest: WeightMeasurement | null
   measurements: WeightMeasurement[]
+  chartMeasurements: WeightMeasurement[]
   system: SystemMetrics
 }
 
@@ -60,12 +61,13 @@ async function getLatestWeight(): Promise<WeightMeasurement | null> {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [health, latest, measurements, system] = await Promise.all([
+  const [health, latest, measurements, chartMeasurements, system] = await Promise.all([
     fetchJson<HealthStatus>('/health'),
     getLatestWeight(),
     fetchJson<WeightMeasurement[]>('/api/weights?limit=7'),
+    fetchJson<WeightMeasurement[]>('/api/weights?limit=30'),
     fetchJson<SystemMetrics>('/api/system/metrics'),
   ])
 
-  return { health, latest, measurements, system }
+  return { health, latest, measurements, chartMeasurements, system }
 }

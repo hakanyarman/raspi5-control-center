@@ -18,6 +18,15 @@ import {
   Wifi,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -313,6 +322,74 @@ function HistoryCard({ measurements }: { measurements: WeightMeasurement[] }) {
   )
 }
 
+interface DailyWeight {
+  date: string
+  label: string
+  weightKg: number
+}
+
+function getDailyWeights(measurements: WeightMeasurement[]): DailyWeight[] {
+  const byDay = new Map<string, WeightMeasurement>()
+  for (const measurement of measurements) {
+    const date = new Date(measurement.measuredAt)
+    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+    const previous = byDay.get(key)
+    if (!previous || measurement.measuredAt > previous.measuredAt) {
+      byDay.set(key, measurement)
+    }
+  }
+
+  return [...byDay.values()]
+    .sort((a, b) => a.measuredAt.localeCompare(b.measuredAt))
+    .map((measurement) => ({
+      date: measurement.measuredAt,
+      label: new Intl.DateTimeFormat('tr-TR', {
+        day: 'numeric',
+        month: 'short',
+      }).format(new Date(measurement.measuredAt)),
+      weightKg: measurement.weightKg,
+    }))
+}
+
+function WeightTrendCard({ measurements }: { measurements: WeightMeasurement[] }) {
+  const dailyWeights = getDailyWeights(measurements)
+
+  return (
+    <Card className="border-white/8 bg-card/60 shadow-none backdrop-blur-xl lg:col-span-2">
+      <CardHeader className="flex-row items-start justify-between">
+        <div>
+          <CardTitle>Ağırlık trendi</CardTitle>
+          <CardDescription>Son 30 günün günlük son ölçümleri.</CardDescription>
+        </div>
+        <Badge variant="secondary">{dailyWeights.length} gün</Badge>
+      </CardHeader>
+      <CardContent>
+        {dailyWeights.length > 0 ? (
+          <div className="h-64 w-full">
+            <ResponsiveContainer height="100%" width="100%">
+              <LineChart data={dailyWeights} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+                <CartesianGrid stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" vertical={false} />
+                <XAxis axisLine={false} dataKey="label" tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 11 }} tickLine={false} />
+                <YAxis axisLine={false} domain={['auto', 'auto']} tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 11 }} tickLine={false} width={42} />
+                <Tooltip
+                  contentStyle={{ background: '#10161d', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, color: '#fff' }}
+                  formatter={(value) => [`${Number(value).toFixed(2)} kg`, 'Ağırlık']}
+                  labelFormatter={(label) => `Tarih: ${label}`}
+                />
+                <Line activeDot={{ r: 5 }} dataKey="weightKg" dot={{ fill: '#34d399', r: 3, strokeWidth: 0 }} isAnimationActive={false} name="Ağırlık" stroke="#34d399" strokeWidth={3} type="monotone" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-white/10 py-12 text-center text-sm text-muted-foreground">
+            Grafik için henüz yeterli ölçüm yok.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function UpcomingCard() {
   return (
     <Card className="border-white/8 bg-card/60 shadow-none backdrop-blur-xl">
@@ -527,6 +604,7 @@ function App() {
               <WeightCard data={data} />
               <StatusCard data={data} />
               <HistoryCard measurements={data.measurements} />
+              <WeightTrendCard measurements={data.chartMeasurements} />
               <SystemCard metrics={data.system} />
               <UpcomingCard />
             </div>
