@@ -13,6 +13,7 @@
   "type": "commonjs",
   "dependencies": {
     "@abandonware/noble": "^1.9.2-26",
+    "dotenv": "^17.4.2",
     "pg": "^8.23.0"
   },
   "devDependencies": {
