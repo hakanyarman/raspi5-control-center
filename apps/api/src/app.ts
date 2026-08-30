@@ -4,6 +4,7 @@ import express, {
   type RequestHandler,
 } from "express";
 import { createNetworkRouter } from "./routes/network";
+import { createServicesRouter } from "./routes/services";
 import { createStorageRouter } from "./routes/storage";
 import { createSystemRouter } from "./routes/system";
 import { createWeightsRouter } from "./routes/weights";
@@ -34,6 +35,7 @@ export function createApp(pool: DatabasePool) {
   app.use("/api/weights", createWeightsRouter(pool));
   app.use("/api/system", createSystemRouter());
   app.use("/api/network", createNetworkRouter());
+  app.use("/api/services", createServicesRouter());
   app.use("/api/storage", createStorageRouter());
 
   const notFoundHandler: RequestHandler = (_request, response) => {

@@ -43,30 +43,45 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   getDashboardData,
+  getServicesStatus,
+  getStorageInventory,
   type DashboardData,
   type LanNeighborObservation,
   type NetworkMetrics,
   type StorageMetrics,
+  type StorageInventory,
+  type ServicesStatus,
   type SystemMetrics,
   type WeightMeasurement,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
-const navigation = [
-  { label: 'Genel Bakış', icon: LayoutDashboard, active: true, available: true },
-  { label: 'Sistem', icon: Gauge, available: true },
-  { label: 'Ağ', icon: Network, available: true },
-  { label: 'Depolama', icon: HardDrive, available: true },
-  { label: 'Servisler', icon: Boxes, available: false },
-]
+type DashboardSection = 'overview' | 'system' | 'network' | 'storage' | 'services'
 
-const upcomingModules = [
-  {
-    title: 'Servisler',
-    description: 'Docker ve systemd servislerinin read-only durumu',
-    icon: Boxes,
-  },
-]
+const navigation = [
+  { id: 'overview', label: 'Genel Bakış', icon: LayoutDashboard },
+  { id: 'system', label: 'Sistem', icon: Gauge },
+  { id: 'network', label: 'Ağ', icon: Network },
+  { id: 'storage', label: 'Depolama', icon: HardDrive },
+  { id: 'services', label: 'Servisler', icon: Boxes },
+] satisfies Array<{ id: DashboardSection; label: string; icon: typeof LayoutDashboard }>
+
+const sectionCopy: Record<DashboardSection, { title: string; description: string }> = {
+  overview: { title: 'Kontrol sende.', description: 'Raspberry Pi altyapın, cihazların ve kişisel verilerin tek yerde.' },
+  system: { title: 'Sistem', description: 'Raspberry Pi sıcaklık, fan, işlemci ve bellek durumu.' },
+  network: { title: 'Ağ', description: 'Bağlantı, trafik ve yerel ağda gözlenen cihazlar.' },
+  storage: { title: 'Depolama', description: 'NVMe ve bağlı disklerin salt-okunur kapasite görünümü.' },
+  services: { title: 'Servisler', description: 'Docker container ve uygulama süreçlerinin canlı durumu.' },
+}
+
+function sectionFromLocation(): DashboardSection {
+  const requested = window.location.hash.replace(/^#\/?/, '')
+  return navigation.some(({ id }) => id === requested)
+    ? requested as DashboardSection
+    : 'overview'
+}
+
+const upcomingModules: Array<{ title: string; description: string; icon: typeof Boxes }> = []
 
 function formatMeasurementDate(value: string): string {
   return new Intl.DateTimeFormat('tr-TR', {
@@ -148,7 +163,7 @@ function mergeMeasurement(
     .slice(0, limit)
 }
 
-function Sidebar() {
+function Sidebar({ activeSection, onSelect }: { activeSection: DashboardSection; onSelect: (section: DashboardSection) => void }) {
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-white/6 bg-black/20 p-5 backdrop-blur-xl lg:flex lg:flex-col">
       <div className="flex items-center gap-3 px-2 py-3">
@@ -162,8 +177,11 @@ function Sidebar() {
       </div>
 
       <nav className="mt-8 space-y-1.5">
-        {navigation.map(({ label, icon: Icon, active, available }) => (
+        {navigation.map(({ id, label, icon: Icon }) => {
+          const active = id === activeSection
+          return (
           <button
+            aria-current={active ? 'page' : undefined}
             className={cn(
               'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',
               active
@@ -171,17 +189,14 @@ function Sidebar() {
                 : 'text-muted-foreground hover:bg-white/5 hover:text-foreground',
             )}
             key={label}
+            onClick={() => onSelect(id)}
             type="button"
           >
             <Icon className={cn('size-4', active && 'text-emerald-400')} />
             <span>{label}</span>
-            {!active && !available && (
-              <span className="ml-auto text-[10px] uppercase tracking-widest text-muted-foreground/60">
-                Yakında
-              </span>
-            )}
           </button>
-        ))}
+          )
+        })}
       </nav>
 
       <div className="mt-auto rounded-2xl border border-white/8 bg-white/[0.03] p-4">
@@ -470,6 +485,20 @@ function UpcomingCard() {
   )
 }
 
+function UnavailableModuleCard({ title }: { title: string }) {
+  return (
+    <Card className="border-amber-400/15 bg-amber-400/5 shadow-none">
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>Bu modülün verisi şu anda okunamadı.</CardDescription>
+      </CardHeader>
+      <CardContent className="text-sm text-amber-100">
+        Diğer dashboard verileri çalışmaya devam ediyor. Yenile düğmesiyle tekrar deneyebilirsin.
+      </CardContent>
+    </Card>
+  )
+}
+
 function SystemCard({ metrics }: { metrics: SystemMetrics }) {
   const temperatureStatus = getTemperatureStatus(metrics.temperatureC)
   return (
@@ -652,12 +681,172 @@ function StorageCard({ metrics }: { metrics: StorageMetrics }) {
   )
 }
 
+function StorageDevicesCard({ inventory }: { inventory: StorageInventory }) {
+  return (
+    <Card className="border-white/8 bg-card/60 shadow-none backdrop-blur-xl lg:col-span-2">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-orange-400/10 text-orange-300">
+            <Database className="size-5" />
+          </div>
+          <Badge className={cn('border-white/10', inventory.externalDriveConnected ? 'text-emerald-300' : 'text-amber-300')} variant="outline">
+            {inventory.externalDriveConnected ? 'Harici disk bağlı' : 'Harici disk algılanmadı'}
+          </Badge>
+        </div>
+        <CardTitle className="mt-5">Bağlı diskler</CardTitle>
+        <CardDescription>Salt-okunur block device ve mount envanteri</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {inventory.devices.map((device) => (
+          <div className="rounded-2xl border border-white/8 bg-white/[0.025] p-4" key={device.path}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate font-medium">{device.model ?? device.path}</p>
+                  {device.isRoot && <Badge variant="secondary">Root</Badge>}
+                  {device.isExternal && <Badge variant="secondary">Harici</Badge>}
+                  {device.readOnly && <Badge variant="secondary">Read-only</Badge>}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{device.path} · {(device.transport ?? 'unknown').toUpperCase()}</p>
+              </div>
+              <p className="shrink-0 text-sm font-semibold tabular-nums">{formatBytes(device.sizeBytes)}</p>
+            </div>
+            <div className="mt-3 space-y-2 border-t border-white/8 pt-3">
+              {device.volumes.map((volume) => (
+                <div className="grid gap-1 text-xs sm:grid-cols-[1fr_1fr_auto] sm:items-center" key={volume.path}>
+                  <span className="font-mono">{volume.path}</span>
+                  <span className="text-muted-foreground">{volume.filesystem ?? 'Filesystem yok'} · {volume.mountPoint ?? 'Bağlı değil'}</span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {volume.usagePercent === null ? formatBytes(volume.partitionSizeBytes) : `%${volume.usagePercent} · ${formatBytes(volume.availableBytes)} boş`}
+                  </span>
+                </div>
+              ))}
+              {device.volumes.length === 0 && <p className="text-xs text-muted-foreground">Filesystem bölümü algılanmadı.</p>}
+            </div>
+          </div>
+        ))}
+        {inventory.devices.length === 0 && <p className="text-sm text-muted-foreground">Fiziksel disk algılanmadı.</p>}
+        {!inventory.externalDriveConnected && (
+          <p className="rounded-xl border border-amber-400/10 bg-amber-400/5 p-3 text-xs text-amber-100">
+            Belgelenmiş harici HDD şu anda işletim sistemi tarafından algılanmıyor; herhangi bir mount veya disk işlemi yapılmadı.
+          </p>
+        )}
+        <p className="text-[11px] text-muted-foreground">Güncellendi: {formatMeasurementDate(inventory.collectedAt)}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ServicesCard({ status }: { status: ServicesStatus }) {
+  const healthyProcesses = status.processes.filter((service) => service.active).length
+  const runningContainers = status.containers.filter((container) => container.state === 'running').length
+  const readyContainers = status.containers.filter((container) =>
+    container.state === 'running' && (container.health === 'healthy' || container.health === 'none'),
+  ).length
+  const processesHealthy = healthyProcesses === status.processes.length
+  const runningContainersReady = readyContainers === runningContainers
+  const needsAttention = !processesHealthy || !status.dockerAvailable || !runningContainersReady
+  const summary = needsAttention
+    ? 'Kontrol gerekli'
+    : runningContainers < status.containers.length
+      ? `${runningContainers}/${status.containers.length} çalışıyor`
+      : 'Tümü çalışıyor'
+
+  return (
+    <Card className="border-white/8 bg-card/60 shadow-none backdrop-blur-xl lg:col-span-2">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-400/10 text-emerald-300">
+            <Server className="size-5" />
+          </div>
+          <Badge className={cn('border-white/10', needsAttention ? 'text-amber-300' : 'text-emerald-300')} variant="outline">
+            {summary}
+          </Badge>
+        </div>
+        <CardTitle className="mt-5">Servisler</CardTitle>
+        <CardDescription>Uygulama süreçleri ve Docker container'ları</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="grid gap-2 sm:grid-cols-3">
+          {status.processes.map((service) => (
+            <div className="rounded-xl bg-white/[0.035] p-3" key={service.id}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">{service.label}</span>
+                <span className={cn('flex items-center gap-1.5 text-[11px]', service.active ? 'text-emerald-300' : 'text-red-300')}>
+                  <span className={cn('size-2 rounded-full', service.active ? 'bg-emerald-400' : 'bg-red-400')} />
+                  {service.active ? 'Aktif' : 'Pasif'}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{service.detail}</p>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                {service.uptimeSeconds === null
+                  ? service.state
+                  : `${formatUptime(service.uptimeSeconds)} · ${service.restarts === null ? 'Restart N/A' : `${service.restarts} restart`}`}
+                {service.pid !== null ? ` · PID ${service.pid}` : ''}
+              </p>
+            </div>
+          ))}
+        </div>
+        <div className="space-y-2 border-t border-white/8 pt-4">
+          <div className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-2 font-medium"><Boxes className="size-4 text-sky-300" /> Docker</span>
+            <span className="text-xs text-muted-foreground">{status.dockerAvailable ? `${runningContainers}/${status.containers.length} çalışıyor` : 'Okunamadı'}</span>
+          </div>
+          {status.containers.map((container) => {
+            const exposedToAllInterfaces = container.ports?.includes('0.0.0.0') || container.ports?.includes('[::]')
+            const ready = container.state === 'running' && (container.health === 'healthy' || container.health === 'none')
+            const warning = container.state === 'running' && !ready && container.health !== 'unhealthy'
+            return (
+            <div className="grid gap-2 rounded-xl bg-white/[0.035] p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center" key={container.id}>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={cn('size-2 shrink-0 rounded-full', ready ? 'bg-emerald-400' : warning ? 'bg-amber-400' : 'bg-red-400')} />
+                  <p className="truncate text-sm font-medium">{container.name}</p>
+                </div>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {container.image} · {container.status}{container.health !== 'none' ? ` · ${container.health}` : ''}
+                </p>
+                <p className={cn('mt-1 truncate font-mono text-[11px]', exposedToAllInterfaces ? 'text-amber-300' : 'text-muted-foreground')}>
+                  {container.ports ?? 'Port yayınlanmıyor'}
+                </p>
+              </div>
+              <div className="text-xs text-muted-foreground sm:text-right">
+                <p>CPU {container.cpuPercent === null ? 'N/A' : `%${container.cpuPercent}`}</p>
+                <p>{container.memoryUsage ?? 'RAM N/A'}</p>
+              </div>
+              <div className="text-xs text-muted-foreground sm:min-w-24 sm:text-right">
+                <p>{container.pids === null ? 'Process N/A' : `${container.pids} process`}</p>
+                <p>{container.restartCount === null ? 'Restart N/A' : `${container.restartCount} restart`}</p>
+                <p>Ağ: {container.networkIo ?? 'N/A'}</p>
+                <p>Disk: {container.blockIo ?? 'N/A'}</p>
+              </div>
+            </div>
+            )
+          })}
+          {status.dockerAvailable && status.containers.length === 0 && (
+            <p className="rounded-xl bg-white/[0.035] p-3 text-xs text-muted-foreground">Çalışan container yok.</p>
+          )}
+          {!status.dockerAvailable && (
+            <p className="rounded-xl border border-amber-400/10 bg-amber-400/5 p-3 text-xs text-amber-100">
+              Docker durumu okunamadı; API, web ve tartı servisleri bağımsız olarak gösterilmeye devam ediyor.
+            </p>
+          )}
+        </div>
+        <p className="text-[11px] text-muted-foreground">10 saniyede bir yenilenir · {formatMeasurementDate(status.collectedAt)}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
 function App() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isDark, setIsDark] = useState(true)
   const [streamConnected, setStreamConnected] = useState(false)
+  const [activeSection, setActiveSection] = useState<DashboardSection>(sectionFromLocation)
+  const [services, setServices] = useState<ServicesStatus | null>(null)
+  const [servicesLoading, setServicesLoading] = useState(true)
 
   const loadData = useCallback(async () => {
     setIsLoading(true)
@@ -692,6 +881,46 @@ function App() {
 
     return () => {
       isCurrent = false
+    }
+  }, [])
+
+  useEffect(() => {
+    const followHistory = () => setActiveSection(sectionFromLocation())
+    window.addEventListener('popstate', followHistory)
+    return () => window.removeEventListener('popstate', followHistory)
+  }, [])
+
+  useEffect(() => {
+    if (activeSection !== 'storage') return
+    const refreshStorage = () => {
+      void getStorageInventory()
+        .then((storageInventory) => setData((current) => current ? { ...current, storageInventory } : current))
+        .catch(() => undefined)
+    }
+    refreshStorage()
+    const interval = window.setInterval(refreshStorage, 30_000)
+    return () => window.clearInterval(interval)
+  }, [activeSection])
+
+  useEffect(() => {
+    let isCurrent = true
+    const refreshServices = () => {
+      void getServicesStatus()
+        .then((nextServices) => {
+          if (isCurrent) setServices(nextServices)
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (isCurrent) setServicesLoading(false)
+        })
+    }
+    refreshServices()
+    const interval = window.setInterval(() => {
+      refreshServices()
+    }, 10_000)
+    return () => {
+      isCurrent = false
+      window.clearInterval(interval)
     }
   }, [])
 
@@ -793,10 +1022,26 @@ function App() {
     setIsDark(document.documentElement.classList.contains('dark'))
   }
 
+  function refreshDashboard() {
+    void loadData()
+    void getServicesStatus()
+      .then(setServices)
+      .catch(() => undefined)
+  }
+
+  function selectSection(section: DashboardSection) {
+    setActiveSection(section)
+    const hash = section === 'overview' ? '' : `#${section}`
+    window.history.pushState(null, '', `${window.location.pathname}${window.location.search}${hash}`)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const activeCopy = sectionCopy[activeSection]
+
   return (
     <div className="min-h-svh bg-background text-foreground">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(16,185,129,0.09),transparent_32%),radial-gradient(circle_at_100%_20%,rgba(56,189,248,0.06),transparent_30%)]" />
-      <Sidebar />
+      <Sidebar activeSection={activeSection} onSelect={selectSection} />
 
       <div className="relative lg:pl-72">
         <header className="sticky top-0 z-20 border-b border-white/6 bg-background/75 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-10">
@@ -825,7 +1070,7 @@ function App() {
               </Button>
               <Button
                 disabled={isLoading}
-                onClick={() => void loadData()}
+                onClick={refreshDashboard}
                 size="sm"
                 variant="outline"
               >
@@ -843,11 +1088,11 @@ function App() {
             <div>
               <p className="text-sm capitalize text-muted-foreground">{today}</p>
               <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
-                Kontrol sende.
+                {activeCopy.title}
               </h1>
             </div>
             <p className="max-w-sm text-sm leading-relaxed text-muted-foreground sm:text-right">
-              Raspberry Pi altyapın, cihazların ve kişisel verilerin tek yerde.
+              {activeCopy.description}
             </p>
           </div>
 
@@ -878,15 +1123,25 @@ function App() {
                   Son yenileme başarısız oldu; ekranda son alınan veriler gösteriliyor.
                 </div>
               )}
-              <div className="grid gap-4 lg:grid-cols-3">
-                <WeightCard data={data} />
-                <StatusCard data={data} streamConnected={streamConnected} />
-                <HistoryCard measurements={data.measurements} />
-                <WeightTrendCard measurements={data.chartMeasurements} />
-                <SystemCard metrics={data.system} />
-                <NetworkCard metrics={data.network} neighbors={data.neighbors} />
-                <StorageCard metrics={data.storage} />
-                {upcomingModules.length > 0 && <UpcomingCard />}
+              <div className={cn('grid gap-4', activeSection === 'overview' ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
+                {activeSection === 'overview' && <WeightCard data={data} />}
+                {activeSection === 'overview' && <StatusCard data={data} streamConnected={streamConnected} />}
+                {activeSection === 'overview' && <HistoryCard measurements={data.measurements} />}
+                {activeSection === 'overview' && <WeightTrendCard measurements={data.chartMeasurements} />}
+                {(activeSection === 'overview' || activeSection === 'system') && <SystemCard metrics={data.system} />}
+                {(activeSection === 'overview' || activeSection === 'network') && <NetworkCard metrics={data.network} neighbors={data.neighbors} />}
+                {(activeSection === 'overview' || activeSection === 'storage') && (
+                  data.storage ? <StorageCard metrics={data.storage} /> : <UnavailableModuleCard title="Depolama" />
+                )}
+                {activeSection === 'storage' && data.storageInventory && <StorageDevicesCard inventory={data.storageInventory} />}
+                {activeSection === 'storage' && !data.storageInventory && <UnavailableModuleCard title="Disk envanteri" />}
+                {(activeSection === 'overview' || activeSection === 'services') && servicesLoading && (
+                  <Skeleton className="h-72 rounded-3xl lg:col-span-2" />
+                )}
+                {(activeSection === 'overview' || activeSection === 'services') && !servicesLoading && (
+                  services ? <ServicesCard status={services} /> : <UnavailableModuleCard title="Servisler" />
+                )}
+                {activeSection === 'overview' && upcomingModules.length > 0 && <UpcomingCard />}
               </div>
             </div>
           ) : null}
@@ -894,19 +1149,24 @@ function App() {
       </div>
 
       <nav className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-2xl border border-white/10 bg-background/90 p-2 shadow-2xl backdrop-blur-xl lg:hidden">
-        {navigation.slice(0, 4).map(({ label, icon: Icon, active }) => (
+        {navigation.map(({ id, label, icon: Icon }) => {
+          const active = id === activeSection
+          return (
           <button
+            aria-current={active ? 'page' : undefined}
             className={cn(
-              'flex min-w-16 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[10px]',
+              'flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px]',
               active ? 'bg-white/8 text-emerald-400' : 'text-muted-foreground',
             )}
             key={label}
+            onClick={() => selectSection(id)}
             type="button"
           >
             <Icon className="size-4" />
             {label}
           </button>
-        ))}
+          )
+        })}
       </nav>
     </div>
   )

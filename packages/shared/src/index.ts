@@ -60,3 +60,69 @@ export interface StorageMetrics {
   usagePercent: number;
   collectedAt: string;
 }
+
+export interface StorageVolume {
+  path: string;
+  filesystem: string | null;
+  mountPoint: string | null;
+  partitionSizeBytes: number;
+  totalBytes: number | null;
+  usedBytes: number | null;
+  availableBytes: number | null;
+  usagePercent: number | null;
+}
+
+export interface StorageDevice {
+  path: string;
+  model: string | null;
+  transport: string | null;
+  sizeBytes: number;
+  removable: boolean;
+  readOnly: boolean;
+  isRoot: boolean;
+  isExternal: boolean;
+  volumes: StorageVolume[];
+}
+
+export interface StorageInventory {
+  devices: StorageDevice[];
+  externalDriveConnected: boolean;
+  collectedAt: string;
+}
+
+export interface DockerContainerStatus {
+  id: string;
+  name: string;
+  image: string;
+  state: string;
+  status: string;
+  health: "healthy" | "unhealthy" | "starting" | "none" | "unknown";
+  runningFor: string;
+  ports: string | null;
+  cpuPercent: number | null;
+  memoryUsage: string | null;
+  memoryPercent: number | null;
+  networkIo: string | null;
+  blockIo: string | null;
+  pids: number | null;
+  restartCount: number | null;
+}
+
+export interface ProcessServiceStatus {
+  id: "api" | "web" | "scale";
+  label: string;
+  active: boolean;
+  state: string;
+  detail: string;
+  pid: number | null;
+  startedAt: string | null;
+  uptimeSeconds: number | null;
+  restarts: number | null;
+}
+
+export interface ServicesStatus {
+  dockerAvailable: boolean;
+  containers: DockerContainerStatus[];
+  processes: ProcessServiceStatus[];
+  collectedAt: string;
+}

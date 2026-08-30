@@ -2,6 +2,8 @@ import type {
   NetworkMetrics,
   LanNeighborObservation,
   StorageMetrics,
+  StorageInventory,
+  ServicesStatus,
   SystemMetrics,
   WeightMeasurement,
 } from '@raspi5-control-center/shared'
@@ -10,6 +12,8 @@ export type {
   NetworkMetrics,
   LanNeighborObservation,
   StorageMetrics,
+  StorageInventory,
+  ServicesStatus,
   SystemMetrics,
   WeightMeasurement,
 } from '@raspi5-control-center/shared'
@@ -27,7 +31,8 @@ export interface DashboardData {
   system: SystemMetrics
   network: NetworkMetrics
   neighbors: LanNeighborObservation[]
-  storage: StorageMetrics
+  storage: StorageMetrics | null
+  storageInventory: StorageInventory | null
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -52,7 +57,7 @@ async function getLatestWeight(): Promise<WeightMeasurement | null> {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [health, latest, measurements, chartMeasurements, system, network, neighbors, storage] = await Promise.all([
+  const [health, latest, measurements, chartMeasurements, system, network, neighbors, storage, storageInventory] = await Promise.all([
     fetchJson<HealthStatus>('/health'),
     getLatestWeight(),
     fetchJson<WeightMeasurement[]>('/api/weights?limit=7'),
@@ -60,8 +65,17 @@ export async function getDashboardData(): Promise<DashboardData> {
     fetchJson<SystemMetrics>('/api/system/metrics'),
     fetchJson<NetworkMetrics>('/api/network/metrics'),
     fetchJson<{ devices: LanNeighborObservation[] }>('/api/network/neighbors'),
-    fetchJson<StorageMetrics>('/api/storage/metrics'),
+    fetchJson<StorageMetrics>('/api/storage/metrics').catch(() => null),
+    getStorageInventory().catch(() => null),
   ])
 
-  return { health, latest, measurements, chartMeasurements, system, network, neighbors: neighbors.devices, storage }
+  return { health, latest, measurements, chartMeasurements, system, network, neighbors: neighbors.devices, storage, storageInventory }
+}
+
+export function getServicesStatus(): Promise<ServicesStatus> {
+  return fetchJson<ServicesStatus>('/api/services/status')
+}
+
+export function getStorageInventory(): Promise<StorageInventory> {
+  return fetchJson<StorageInventory>('/api/storage/devices')
 }
