@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   Activity,
   ArrowDown,
   ArrowUp,
@@ -18,6 +19,7 @@ import {
   Thermometer,
   Wind,
   Wifi,
+  Flame,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -45,6 +47,13 @@ import {
   getDashboardData,
   getServicesStatus,
   getStorageInventory,
+  getCalorieSummary,
+  getCalorieEntries,
+  getCalorieHistory,
+  createCalorieEntry,
+  deleteCalorieEntry,
+  saveProfile,
+  getProfile,
   type DashboardData,
   type LanNeighborObservation,
   type NetworkMetrics,
@@ -53,10 +62,15 @@ import {
   type ServicesStatus,
   type SystemMetrics,
   type WeightMeasurement,
+  type CalorieSummary,
+  type CalorieEntry,
+  type DailyCalorieTotal,
+  type UserProfile,
 } from '@/lib/api'
+import { calendarDate, shiftCalendarDate } from '@/lib/calendar'
 import { cn } from '@/lib/utils'
 
-type DashboardSection = 'overview' | 'system' | 'network' | 'storage' | 'services'
+type DashboardSection = 'overview' | 'system' | 'network' | 'storage' | 'services' | 'calories'
 
 const navigation = [
   { id: 'overview', label: 'Genel Bakış', icon: LayoutDashboard },
@@ -64,6 +78,7 @@ const navigation = [
   { id: 'network', label: 'Ağ', icon: Network },
   { id: 'storage', label: 'Depolama', icon: HardDrive },
   { id: 'services', label: 'Servisler', icon: Boxes },
+  { id: 'calories', label: 'Kalori', icon: Flame },
 ] satisfies Array<{ id: DashboardSection; label: string; icon: typeof LayoutDashboard }>
 
 const sectionCopy: Record<DashboardSection, { title: string; description: string }> = {
@@ -72,6 +87,7 @@ const sectionCopy: Record<DashboardSection, { title: string; description: string
   network: { title: 'Ağ', description: 'Bağlantı, trafik ve yerel ağda gözlenen cihazlar.' },
   storage: { title: 'Depolama', description: 'NVMe ve bağlı disklerin salt-okunur kapasite görünümü.' },
   services: { title: 'Servisler', description: 'Docker container ve uygulama süreçlerinin canlı durumu.' },
+  calories: { title: 'Kalori', description: 'Öğün kayıtları, günlük toplam ve enerji ihtiyacı.' },
 }
 
 function sectionFromLocation(): DashboardSection {
@@ -838,6 +854,212 @@ function ServicesCard({ status }: { status: ServicesStatus }) {
   )
 }
 
+interface CalorieDashboardSnapshot {
+  summary: CalorieSummary
+  entries: CalorieEntry[]
+  history: DailyCalorieTotal[]
+  profile: UserProfile | null
+}
+
+const mealLabels: Record<CalorieEntry['mealType'], string> = {
+  breakfast: 'Kahvaltı',
+  lunch: 'Öğle',
+  dinner: 'Akşam',
+  snack: 'Ara öğün',
+}
+
+async function getCalorieDashboardSnapshot(today: string): Promise<CalorieDashboardSnapshot> {
+  const [summary, entries, history, profile] = await Promise.all([
+    getCalorieSummary(today),
+    getCalorieEntries(today, shiftCalendarDate(today, 1)),
+    getCalorieHistory(shiftCalendarDate(today, -29), shiftCalendarDate(today, 1)),
+    getProfile(),
+  ])
+  return { summary, entries, history, profile }
+}
+
+function CalorieSection() {
+  const [summary, setSummary] = useState<CalorieSummary | null>(null)
+  const [entries, setEntries] = useState<CalorieEntry[]>([])
+  const [history, setHistory] = useState<DailyCalorieTotal[]>([])
+  const [profile, setProfile] = useState<UserProfile>({ heightCm: null, birthDate: null, sex: null, activityLevel: null })
+  const [calories, setCalories] = useState('500')
+  const [mealType, setMealType] = useState<CalorieEntry['mealType']>('breakfast')
+  const [description, setDescription] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [today, setToday] = useState(() => calendarDate())
+
+  function applySnapshot(snapshot: CalorieDashboardSnapshot): void {
+    setSummary(snapshot.summary)
+    setEntries(snapshot.entries)
+    setHistory(snapshot.history)
+    setProfile(snapshot.profile ?? { heightCm: null, birthDate: null, sex: null, activityLevel: null })
+  }
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const nextDate = calendarDate()
+      setToday((currentDate) => currentDate === nextDate ? currentDate : nextDate)
+    }, 60_000)
+    return () => window.clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    void getCalorieDashboardSnapshot(today)
+      .then((snapshot) => {
+        if (!active) return
+        applySnapshot(snapshot)
+        setError(null)
+      })
+      .catch(() => {
+        if (active) setError('Kalori verileri alınamadı. API ve veritabanı bağlantısını kontrol et.')
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => { active = false }
+  }, [today])
+
+  async function refresh(): Promise<void> {
+    applySnapshot(await getCalorieDashboardSnapshot(today))
+  }
+
+  async function submitEntry(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const caloriesKcal = Number(calories)
+    if (!Number.isInteger(caloriesKcal) || caloriesKcal < 1 || caloriesKcal > 10000) {
+      setError('Kalori değeri 1 ile 10000 arasında tam sayı olmalı.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await createCalorieEntry({ mealType, description: description.trim(), caloriesKcal, consumedAt: new Date().toISOString() })
+      setDescription('')
+      try {
+        await refresh()
+      } catch {
+        setError('Kalori kaydı eklendi ancak ekran yenilenemedi. Tekrar dene ile listeyi yenileyebilirsin.')
+      }
+    } catch {
+      setError('Kalori kaydı eklenemedi. Bilgileri kontrol edip tekrar dene.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function submitProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      const saved = await saveProfile(profile)
+      setProfile(saved)
+      try {
+        await refresh()
+      } catch {
+        setError('Profil kaydedildi ancak özet yenilenemedi. Tekrar dene ile özeti yenileyebilirsin.')
+      }
+    } catch {
+      setError('Profil kaydedilemedi. Boy ve doğum tarihi bilgilerini kontrol et.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeEntry(entry: CalorieEntry): Promise<void> {
+    if (!window.confirm(`“${entry.description || mealLabels[entry.mealType]}” kaydını silmek istiyor musun?`)) return
+    setBusy(true)
+    setError(null)
+    try {
+      await deleteCalorieEntry(entry.id)
+      try {
+        await refresh()
+      } catch {
+        setEntries((currentEntries) => currentEntries.filter(({ id }) => id !== entry.id))
+        setError('Kayıt silindi ancak özet yenilenemedi. Tekrar dene ile verileri yenileyebilirsin.')
+      }
+    } catch {
+      setError('Kalori kaydı silinemedi. Sayfayı yenileyip tekrar dene.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const inputClassName = 'w-full rounded-xl border border-white/10 bg-background px-3 py-2 text-sm'
+
+  return (
+    <div className="space-y-4 lg:col-span-2">
+      {error && (
+        <div aria-live="polite" className="flex items-center gap-2 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">
+          <AlertCircle className="size-4 shrink-0" />
+          <span>{error}</span>
+          <Button className="ml-auto" onClick={() => void refresh().then(() => setError(null)).catch(() => undefined)} size="sm" variant="outline">Tekrar dene</Button>
+        </div>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card className="border-emerald-400/15 bg-emerald-400/10 shadow-none">
+          <CardHeader><CardDescription>Bugünün toplamı</CardDescription><CardTitle className="text-4xl">{loading ? '…' : `${summary?.totalCaloriesKcal ?? 0} kcal`}</CardTitle></CardHeader>
+        </Card>
+        <Card className="border-white/8 bg-card/60 shadow-none">
+          <CardHeader><CardDescription>BMR</CardDescription><CardTitle className="text-4xl">{summary?.bmrKcal ? `${summary.bmrKcal} kcal` : '—'}</CardTitle><CardDescription>{summary?.bmrStatus === 'available' ? 'Son tartı ölçümünden hesaplandı.' : 'Profil ve son kilo ölçümü gerekli.'}</CardDescription></CardHeader>
+        </Card>
+        <Card className="border-white/8 bg-card/60 shadow-none">
+          <CardHeader><CardDescription>Günlük ihtiyaç (TDEE)</CardDescription><CardTitle className="text-4xl">{summary?.tdeeKcal ? `${summary.tdeeKcal} kcal` : '—'}</CardTitle><CardDescription>{summary?.bmrKcal && !summary.tdeeKcal ? 'Aktivite seviyesi seçilmeli.' : 'BMR ve aktivite seviyesine göre.'}</CardDescription></CardHeader>
+        </Card>
+        <Card className="border-white/8 bg-card/60 shadow-none">
+          <CardHeader><CardDescription>Son ağırlık</CardDescription><CardTitle className="text-4xl">{summary?.latestWeight ? `${formatWeight(summary.latestWeight.weightKg)} kg` : '—'}</CardTitle></CardHeader>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="border-white/8 bg-card/60 shadow-none">
+          <CardHeader><CardTitle>Öğün ekle</CardTitle><CardDescription>Kalori kaydını manuel gir.</CardDescription></CardHeader>
+          <CardContent>
+            <form className="space-y-3" onSubmit={(event) => void submitEntry(event)}>
+              <label className="block space-y-1 text-sm"><span>Öğün</span><select className={inputClassName} value={mealType} onChange={(event) => setMealType(event.target.value as CalorieEntry['mealType'])}><option value="breakfast">Kahvaltı</option><option value="lunch">Öğle</option><option value="dinner">Akşam</option><option value="snack">Ara öğün</option></select></label>
+              <label className="block space-y-1 text-sm"><span>Açıklama</span><input className={inputClassName} maxLength={200} placeholder="Örn. tavuklu salata" value={description} onChange={(event) => setDescription(event.target.value)} /></label>
+              <label className="block space-y-1 text-sm"><span>Kalori (kcal)</span><input className={inputClassName} max="10000" min="1" required step="1" type="number" value={calories} onChange={(event) => setCalories(event.target.value)} /></label>
+              <Button disabled={busy} type="submit">{busy ? 'Kaydediliyor…' : 'Kaydet'}</Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/8 bg-card/60 shadow-none">
+          <CardHeader><CardTitle>Profil</CardTitle><CardDescription>BMR ve günlük enerji ihtiyacı hesabında kullanılır.</CardDescription></CardHeader>
+          <CardContent>
+            <form className="space-y-3" onSubmit={(event) => void submitProfile(event)}>
+              <label className="block space-y-1 text-sm"><span>Boy (cm)</span><input className={inputClassName} max="250" min="80" required step="0.1" type="number" value={profile.heightCm ?? ''} onChange={(event) => setProfile({ ...profile, heightCm: event.target.value ? Number(event.target.value) : null })} /></label>
+              <label className="block space-y-1 text-sm"><span>Doğum tarihi</span><input className={inputClassName} max={today} required type="date" value={profile.birthDate ?? ''} onChange={(event) => setProfile({ ...profile, birthDate: event.target.value || null })} /></label>
+              <label className="block space-y-1 text-sm"><span>Cinsiyet</span><select className={inputClassName} required value={profile.sex ?? ''} onChange={(event) => setProfile({ ...profile, sex: (event.target.value || null) as UserProfile['sex'] })}><option value="">Seç</option><option value="male">Erkek</option><option value="female">Kadın</option></select></label>
+              <label className="block space-y-1 text-sm"><span>Aktivite seviyesi</span><select className={inputClassName} value={profile.activityLevel ?? ''} onChange={(event) => setProfile({ ...profile, activityLevel: (event.target.value || null) as UserProfile['activityLevel'] })}><option value="">Seçme (yalnızca BMR)</option><option value="sedentary">Hareketsiz</option><option value="light">Hafif aktif</option><option value="moderate">Orta aktif</option><option value="very_active">Çok aktif</option><option value="extra_active">Ekstra aktif</option></select></label>
+              <Button disabled={busy || !profile.heightCm || !profile.birthDate || !profile.sex} type="submit">{busy ? 'Kaydediliyor…' : 'Profili kaydet'}</Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-white/8 bg-card/60 shadow-none">
+        <CardHeader><CardTitle>Kalori trendi</CardTitle><CardDescription>Son 30 günün günlük toplamı.</CardDescription></CardHeader>
+        <CardContent>
+          {history.length > 0 ? <div className="h-64"><ResponsiveContainer height="100%" width="100%"><LineChart data={history}><CartesianGrid stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="date" tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 11 }} /><YAxis tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 11 }} /><Tooltip formatter={(value) => [`${Number(value)} kcal`, 'Toplam']} /><Line dataKey="totalCaloriesKcal" dot={{ fill: '#f59e0b', r: 3 }} isAnimationActive={false} stroke="#f59e0b" strokeWidth={3} type="monotone" /></LineChart></ResponsiveContainer></div> : <p className="py-10 text-center text-sm text-muted-foreground">{loading ? 'Kalori geçmişi yükleniyor…' : 'Henüz kalori kaydı yok.'}</p>}
+        </CardContent>
+      </Card>
+
+      <Card className="border-white/8 bg-card/60 shadow-none">
+        <CardHeader><CardTitle>Bugünkü öğünler</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {entries.length === 0 ? <p className="text-sm text-muted-foreground">{loading ? 'Öğünler yükleniyor…' : 'Bugün kayıt yok.'}</p> : entries.map((entry) => <div className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.035] px-3 py-2 text-sm" key={entry.id}><span className="min-w-0 truncate">{entry.description || mealLabels[entry.mealType]}</span><span className="flex shrink-0 items-center gap-2 font-semibold">{entry.caloriesKcal} kcal <Button disabled={busy} onClick={() => void removeEntry(entry)} size="xs" variant="destructive">Sil</Button></span></div>)}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 function App() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -1141,6 +1363,7 @@ function App() {
                 {(activeSection === 'overview' || activeSection === 'services') && !servicesLoading && (
                   services ? <ServicesCard status={services} /> : <UnavailableModuleCard title="Servisler" />
                 )}
+                {activeSection === 'calories' && <CalorieSection />}
                 {activeSection === 'overview' && upcomingModules.length > 0 && <UpcomingCard />}
               </div>
             </div>

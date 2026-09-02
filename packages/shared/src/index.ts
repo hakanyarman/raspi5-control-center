@@ -4,6 +4,8 @@ export interface WeightMeasurement {
   measuredAt: string;
 }
 
+export * from './calories'
+
 export interface SystemMetrics {
   temperatureC: number | null;
   fanRpm: number | null;

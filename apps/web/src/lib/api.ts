@@ -6,6 +6,10 @@ import type {
   ServicesStatus,
   SystemMetrics,
   WeightMeasurement,
+  CalorieEntry,
+  CalorieSummary,
+  DailyCalorieTotal,
+  UserProfile,
 } from '@raspi5-control-center/shared'
 
 export type {
@@ -16,6 +20,10 @@ export type {
   ServicesStatus,
   SystemMetrics,
   WeightMeasurement,
+  CalorieEntry,
+  CalorieSummary,
+  DailyCalorieTotal,
+  UserProfile,
 } from '@raspi5-control-center/shared'
 
 export interface HealthStatus {
@@ -78,4 +86,37 @@ export function getServicesStatus(): Promise<ServicesStatus> {
 
 export function getStorageInventory(): Promise<StorageInventory> {
   return fetchJson<StorageInventory>('/api/storage/devices')
+}
+
+export function getCalorieSummary(date: string): Promise<CalorieSummary> {
+  return fetchJson<CalorieSummary>(`/api/calories/summary?date=${encodeURIComponent(date)}`)
+}
+
+export function getCalorieEntries(from: string, to: string): Promise<CalorieEntry[]> {
+  return fetchJson<CalorieEntry[]>(`/api/calories/entries?from=${from}&to=${to}`)
+}
+
+export function getCalorieHistory(from: string, to: string): Promise<DailyCalorieTotal[]> {
+  return fetchJson<DailyCalorieTotal[]>(`/api/calories/history?from=${from}&to=${to}`)
+}
+
+export function getProfile(): Promise<UserProfile | null> {
+  return fetchJson<UserProfile | null>('/api/calories/profile')
+}
+
+export async function saveProfile(profile: UserProfile): Promise<UserProfile> {
+  const response = await fetch('/api/calories/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(profile) })
+  if (!response.ok) throw new Error(`Profile request failed with status ${response.status}`)
+  return response.json() as Promise<UserProfile>
+}
+
+export async function createCalorieEntry(entry: Omit<CalorieEntry, 'id'>): Promise<CalorieEntry> {
+  const response = await fetch('/api/calories/entries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry) })
+  if (!response.ok) throw new Error(`Calorie entry request failed with status ${response.status}`)
+  return response.json() as Promise<CalorieEntry>
+}
+
+export async function deleteCalorieEntry(id: string): Promise<void> {
+  const response = await fetch(`/api/calories/entries/${id}`, { method: 'DELETE' })
+  if (!response.ok) throw new Error(`Calorie delete request failed with status ${response.status}`)
 }
