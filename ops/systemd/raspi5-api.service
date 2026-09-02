@@ -1,0 +1,26 @@
+[Unit]
+Description=Raspberry Pi control center API
+Documentation=https://github.com/hakanyarman/raspi5-control-center
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/raspi5-control-center
+Environment=NODE_ENV=production
+EnvironmentFile=-%h/projects/raspi5-control-center/.env
+ExecStart=/usr/bin/bash %h/projects/raspi5-control-center/ops/run-api.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=default.target

@@ -215,7 +215,7 @@ async function collectWebStatus(): Promise<ProcessServiceStatus> {
       label: "Web Dashboard",
       active: response.ok,
       state: response.ok ? "active" : "unavailable",
-      detail: response.ok ? "Vite :5173" : `HTTP ${response.status}`,
+      detail: response.ok ? "HTTP :5173" : `HTTP ${response.status}`,
       pid: null,
       startedAt: null,
       uptimeSeconds: null,
