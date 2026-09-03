@@ -1,0 +1,24 @@
+logLevel: info
+rtsp: false
+rtmp: false
+hls: true
+hlsAddress: 127.0.0.1:8888
+hlsVariant: mpegts
+hlsSegmentDuration: 500ms
+hlsSegmentCount: 3
+srt: false
+webrtc: true
+webrtcAddress: 127.0.0.1:8889
+webrtcAdditionalHosts:
+  - hakanyarman.tail8ffc2f.ts.net
+webrtcLocalUDPAddress: 100.126.56.39:8189
+
+paths:
+  room:
+    source: rpiCamera
+    sourceOnDemand: true
+    rpiCameraCamID: 0
+    rpiCameraWidth: 1280
+    rpiCameraHeight: 720
+    rpiCameraFPS: 15
+    rpiCameraIDRPeriod: 8

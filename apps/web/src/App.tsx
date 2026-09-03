@@ -21,6 +21,7 @@ import {
   Wifi,
   Flame,
   FileText,
+  Video,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -74,7 +75,7 @@ import {
 import { calendarDate, shiftCalendarDate } from '@/lib/calendar'
 import { cn } from '@/lib/utils'
 
-type DashboardSection = 'overview' | 'system' | 'network' | 'storage' | 'services' | 'calories' | 'files'
+type DashboardSection = 'overview' | 'system' | 'network' | 'storage' | 'services' | 'calories' | 'files' | 'camera'
 
 const navigation = [
   { id: 'overview', label: 'Genel Bakış', icon: LayoutDashboard },
@@ -84,6 +85,7 @@ const navigation = [
   { id: 'services', label: 'Servisler', icon: Boxes },
   { id: 'calories', label: 'Kalori', icon: Flame },
   { id: 'files', label: 'Dosyalar', icon: FileText },
+  { id: 'camera', label: 'Kamera', icon: Video },
 ] satisfies Array<{ id: DashboardSection; label: string; icon: typeof LayoutDashboard }>
 
 const sectionCopy: Record<DashboardSection, { title: string; description: string }> = {
@@ -94,6 +96,7 @@ const sectionCopy: Record<DashboardSection, { title: string; description: string
   services: { title: 'Servisler', description: 'Docker container ve uygulama süreçlerinin canlı durumu.' },
   calories: { title: 'Kalori', description: 'Öğün kayıtları, günlük toplam ve enerji ihtiyacı.' },
   files: { title: 'Dosyalar', description: 'Özel NVMe klasöründeki dosyaların salt-okunur görünümü.' },
+  camera: { title: 'Kamera', description: 'Odanın tailnet üzerinden canlı kamera görüntüsü.' },
 }
 
 function sectionFromLocation(): DashboardSection {
@@ -1099,6 +1102,17 @@ function FileBrowserSection() {
   </div>
 }
 
+function CameraSection() {
+  const [loaded, setLoaded] = useState(false)
+  const [failed, setFailed] = useState(false)
+  return <div className="space-y-4 lg:col-span-2">
+    <Card className="overflow-hidden border-white/8 bg-card/60 shadow-none">
+      <CardHeader><div className="flex items-center justify-between gap-3"><div><CardTitle>Oda kamerası</CardTitle><CardDescription>Canlı yayın · kayıt yapılmıyor · tailnet erişimi</CardDescription></div><Badge className={cn(loaded && !failed ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300' : 'border-amber-400/20 bg-amber-400/10 text-amber-300')} variant="outline">{failed ? 'Ulaşılamıyor' : loaded ? 'Canlı' : 'Bağlanıyor'}</Badge></div></CardHeader>
+      <CardContent className="p-0"><div className="aspect-video w-full bg-black"><video autoPlay className="size-full" controls muted playsInline onCanPlay={() => setLoaded(true)} onError={() => setFailed(true)} src="/camera-hls/room/index.m3u8?cookieCheck=1" /></div><p className="px-6 py-4 text-xs text-muted-foreground">Yayın yalnızca Kamera bölümünü açtığında başlar. Görüntü gelmezse kamera ve `raspi5-camera` servis durumunu kontrol et.</p></CardContent>
+    </Card>
+  </div>
+}
+
 function App() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -1404,6 +1418,7 @@ function App() {
                 )}
                 {activeSection === 'calories' && <CalorieSection />}
                 {activeSection === 'files' && <FileBrowserSection />}
+                {activeSection === 'camera' && <CameraSection />}
                 {activeSection === 'overview' && upcomingModules.length > 0 && <UpcomingCard />}
               </div>
             </div>
