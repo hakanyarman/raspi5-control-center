@@ -5,6 +5,7 @@ export interface WeightMeasurement {
 }
 
 export * from './calories'
+export * from './files'
 
 export interface SystemMetrics {
   temperatureC: number | null;

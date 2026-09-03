@@ -9,6 +9,7 @@ import { createStorageRouter } from "./routes/storage";
 import { createSystemRouter } from "./routes/system";
 import { createWeightsRouter } from "./routes/weights";
 import { createCaloriesRouter } from "./routes/calories";
+import { createFilesRouter } from "./routes/files";
 
 export function createApp(pool: DatabasePool) {
   const app = express();
@@ -35,6 +36,7 @@ export function createApp(pool: DatabasePool) {
 
   app.use("/api/weights", createWeightsRouter(pool));
   app.use("/api/calories", createCaloriesRouter(pool));
+  app.use("/api/files", createFilesRouter(pool));
   app.use("/api/system", createSystemRouter());
   app.use("/api/network", createNetworkRouter());
   app.use("/api/services", createServicesRouter());

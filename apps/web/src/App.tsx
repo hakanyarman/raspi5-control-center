@@ -20,6 +20,7 @@ import {
   Wind,
   Wifi,
   Flame,
+  FileText,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -54,6 +55,8 @@ import {
   deleteCalorieEntry,
   saveProfile,
   getProfile,
+  getFiles,
+  getFileDownloadUrl,
   type DashboardData,
   type LanNeighborObservation,
   type NetworkMetrics,
@@ -66,11 +69,12 @@ import {
   type CalorieEntry,
   type DailyCalorieTotal,
   type UserProfile,
+  type FileListing,
 } from '@/lib/api'
 import { calendarDate, shiftCalendarDate } from '@/lib/calendar'
 import { cn } from '@/lib/utils'
 
-type DashboardSection = 'overview' | 'system' | 'network' | 'storage' | 'services' | 'calories'
+type DashboardSection = 'overview' | 'system' | 'network' | 'storage' | 'services' | 'calories' | 'files'
 
 const navigation = [
   { id: 'overview', label: 'Genel Bakış', icon: LayoutDashboard },
@@ -79,6 +83,7 @@ const navigation = [
   { id: 'storage', label: 'Depolama', icon: HardDrive },
   { id: 'services', label: 'Servisler', icon: Boxes },
   { id: 'calories', label: 'Kalori', icon: Flame },
+  { id: 'files', label: 'Dosyalar', icon: FileText },
 ] satisfies Array<{ id: DashboardSection; label: string; icon: typeof LayoutDashboard }>
 
 const sectionCopy: Record<DashboardSection, { title: string; description: string }> = {
@@ -88,6 +93,7 @@ const sectionCopy: Record<DashboardSection, { title: string; description: string
   storage: { title: 'Depolama', description: 'NVMe ve bağlı disklerin salt-okunur kapasite görünümü.' },
   services: { title: 'Servisler', description: 'Docker container ve uygulama süreçlerinin canlı durumu.' },
   calories: { title: 'Kalori', description: 'Öğün kayıtları, günlük toplam ve enerji ihtiyacı.' },
+  files: { title: 'Dosyalar', description: 'Özel NVMe klasöründeki dosyaların salt-okunur görünümü.' },
 }
 
 function sectionFromLocation(): DashboardSection {
@@ -1060,6 +1066,39 @@ function CalorieSection() {
   )
 }
 
+function FileBrowserSection() {
+  const [path, setPath] = useState('')
+  const [search, setSearch] = useState('')
+  const [sort, setSort] = useState<'name' | 'size' | 'modified'>('name')
+  const [order, setOrder] = useState<'asc' | 'desc'>('asc')
+  const [listing, setListing] = useState<FileListing | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    try { setListing(await getFiles(path, search, sort, order)); setError(null) }
+    catch { setError('Dosya kökü bulunamadı veya liste okunamadı. FILES_ROOT yapılandırmasını kontrol et.') }
+    finally { setLoading(false) }
+  }, [path, search, sort, order])
+
+  useEffect(() => { void refresh() }, [refresh])
+  const crumbs = path ? path.split('/') : []
+  const formatFileSize = (value: number | null) => value === null ? 'Klasör' : formatBytes(value)
+
+  return <div className="space-y-4 lg:col-span-2">
+    <Card className="border-white/8 bg-card/60 shadow-none">
+      <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>Dosyalar</CardTitle><CardDescription>Salt-okunur · yalnızca yapılandırılmış dosya kökü</CardDescription></div><Badge variant="secondary">{listing?.readOnly ? 'READ ONLY' : '—'}</Badge></div></CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2 text-sm"><button className="text-emerald-300 hover:underline" onClick={() => setPath('')} type="button">Kök</button>{crumbs.map((crumb, index) => <span className="flex items-center gap-2" key={`${crumb}-${index}`}><span className="text-muted-foreground">/</span><button className="text-emerald-300 hover:underline" onClick={() => setPath(crumbs.slice(0, index + 1).join('/'))} type="button">{crumb}</button></span>)}</div>
+        <div className="flex flex-wrap gap-2"><input className="min-w-48 flex-1 rounded-xl border border-white/10 bg-background px-3 py-2 text-sm" placeholder="Dosya ara" value={search} onChange={(event) => setSearch(event.target.value)} /><select className="rounded-xl border border-white/10 bg-background px-3 py-2 text-sm" value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="name">Ada göre</option><option value="size">Boyuta göre</option><option value="modified">Tarihe göre</option></select><Button onClick={() => setOrder(order === 'asc' ? 'desc' : 'asc')} size="sm" variant="outline">{order === 'asc' ? 'Artan' : 'Azalan'}</Button></div>
+        {error && <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">{error}</div>}
+        {loading ? <p className="py-8 text-center text-sm text-muted-foreground">Dosyalar yükleniyor…</p> : listing && <div className="space-y-1">{listing.entries.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">Bu klasörde gösterilecek dosya yok.</p> : listing.entries.map((entry) => <div className="flex items-center gap-3 rounded-xl bg-white/[0.035] px-3 py-3" key={entry.relativePath}><FileText className={cn('size-4 shrink-0', entry.kind === 'directory' ? 'text-amber-300' : 'text-sky-300')} /><button className="min-w-0 flex-1 truncate text-left text-sm hover:text-emerald-300" onClick={() => entry.kind === 'directory' && setPath(entry.relativePath)} type="button">{entry.name}</button><span className="hidden text-xs text-muted-foreground sm:block">{formatFileSize(entry.sizeBytes)}</span><span className="hidden text-xs text-muted-foreground md:block">{formatMeasurementDate(entry.modifiedAt)}</span>{entry.kind === 'file' && <a className="text-xs text-emerald-300 hover:underline" href={getFileDownloadUrl(entry.relativePath)}>İndir</a>}</div>)}</div>}
+      </CardContent>
+    </Card>
+  </div>
+}
+
 function App() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -1364,6 +1403,7 @@ function App() {
                   services ? <ServicesCard status={services} /> : <UnavailableModuleCard title="Servisler" />
                 )}
                 {activeSection === 'calories' && <CalorieSection />}
+                {activeSection === 'files' && <FileBrowserSection />}
                 {activeSection === 'overview' && upcomingModules.length > 0 && <UpcomingCard />}
               </div>
             </div>

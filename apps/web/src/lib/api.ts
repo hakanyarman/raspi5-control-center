@@ -10,6 +10,7 @@ import type {
   CalorieSummary,
   DailyCalorieTotal,
   UserProfile,
+  FileListing,
 } from '@raspi5-control-center/shared'
 
 export type {
@@ -24,6 +25,7 @@ export type {
   CalorieSummary,
   DailyCalorieTotal,
   UserProfile,
+  FileListing,
 } from '@raspi5-control-center/shared'
 
 export interface HealthStatus {
@@ -119,4 +121,13 @@ export async function createCalorieEntry(entry: Omit<CalorieEntry, 'id'>): Promi
 export async function deleteCalorieEntry(id: string): Promise<void> {
   const response = await fetch(`/api/calories/entries/${id}`, { method: 'DELETE' })
   if (!response.ok) throw new Error(`Calorie delete request failed with status ${response.status}`)
+}
+
+export function getFiles(path = '', search = '', sort = 'name', order = 'asc'): Promise<FileListing> {
+  const params = new URLSearchParams({ path, search, sort, order })
+  return fetchJson<FileListing>(`/api/files?${params.toString()}`)
+}
+
+export function getFileDownloadUrl(path: string): string {
+  return `/api/files/download?path=${encodeURIComponent(path)}`
 }
